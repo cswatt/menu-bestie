@@ -16,6 +16,16 @@ app.use(express.static('build')); // Serve React build files
 // Store temporary menu data in memory
 let temporaryMenuData = null;
 
+// Helper function to add UIDs to items
+const addUIDsToItems = (items) => {
+  if (!items || !Array.isArray(items)) return items;
+  
+  return items.map((item, index) => ({
+    ...item,
+    _uid: item._uid || `item_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`
+  }));
+};
+
 // API Routes
 app.get('/api/menu-data', async (req, res) => {
   try {
@@ -25,7 +35,14 @@ app.get('/api/menu-data', async (req, res) => {
     
     // Initialize temporary data if not set
     if (!temporaryMenuData) {
-      temporaryMenuData = menuData;
+      // Add UIDs to all items when first loading
+      temporaryMenuData = {
+        ...menuData,
+        menu: {
+          ...menuData.menu,
+          main: addUIDsToItems(menuData.menu.main)
+        }
+      };
     }
     
     res.json(temporaryMenuData);
@@ -46,8 +63,17 @@ app.post('/api/menu-data', async (req, res) => {
     
     console.log(`Updating temporary menu data with ${menuData.menu.main.length} items`);
     
+    // Ensure all items have UIDs
+    const menuDataWithUIDs = {
+      ...menuData,
+      menu: {
+        ...menuData.menu,
+        main: addUIDsToItems(menuData.menu.main)
+      }
+    };
+    
     // Store in temporary memory only - don't write to file
-    temporaryMenuData = menuData;
+    temporaryMenuData = menuDataWithUIDs;
     
     console.log('Temporary menu data updated successfully');
     res.json({ message: 'Temporary menu data updated successfully' });
@@ -79,6 +105,30 @@ app.get('/api/download-yaml', async (req, res) => {
   } catch (error) {
     console.error('Error generating YAML download:', error);
     res.status(500).json({ error: 'Failed to generate YAML download' });
+  }
+});
+
+// New endpoint to reset temporary data
+app.post('/api/reset', async (req, res) => {
+  try {
+    console.log('Resetting temporary menu data to original file');
+    
+    // Clear temporary data
+    temporaryMenuData = null;
+    
+    // Force a fresh read from the original file
+    const yamlPath = path.join(__dirname, 'main.en.yaml');
+    const yamlContent = await fs.readFile(yamlPath, 'utf8');
+    const originalMenuData = yaml.load(yamlContent);
+    
+    // Set temporary data to the original
+    temporaryMenuData = originalMenuData;
+    
+    console.log('Reset completed successfully');
+    res.json({ message: 'Reset completed successfully' });
+  } catch (error) {
+    console.error('Error resetting menu data:', error);
+    res.status(500).json({ error: 'Failed to reset menu data' });
   }
 });
 
