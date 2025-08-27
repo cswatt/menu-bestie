@@ -27,8 +27,31 @@ const MenuEditor = () => {
     weight: 0
   });
 
+  // Parent autocomplete state
+  const [parentSuggestions, setParentSuggestions] = useState([]);
+  const [showParentSuggestions, setShowParentSuggestions] = useState(false);
+
+  // Inline edit state for items without identifiers
+  const [inlineEditingItem, setInlineEditingItem] = useState(null);
+  const [inlineEditForm, setInlineEditForm] = useState({});
+
   // Track the last edited item to preserve its expanded state
   const lastEditedItemRef = useRef(null);
+
+  // Handle clicking outside autocomplete suggestions
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showParentSuggestions && !event.target.closest('.relative')) {
+        setShowParentSuggestions(false);
+        setParentSuggestions([]);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showParentSuggestions]);
 
   // Add visual feedback for recently edited items
   const addEditFeedback = (item) => {
@@ -134,19 +157,22 @@ const MenuEditor = () => {
       const editingItem = lastEditedItemRef.current;
       console.log('useEffect: Preserving expanded state for:', editingItem.name);
       
-      if (editingItem.parent) {
+      // Check if the parent has changed (use editForm.parent if available, fallback to editingItem.parent)
+      const currentParent = editingItem._editFormParent || editingItem.parent;
+      
+      if (currentParent) {
         const newExpanded = new Set();
+        let currentParentIdentifier = currentParent;
         
-        // Find all parent items in the hierarchy and keep them expanded
-        let currentParent = editingItem.parent;
-        while (currentParent) {
-          const parentItem = menuData.menu.main.find(item => item.identifier === currentParent);
+        // Traverse up the parent hierarchy
+        while (currentParentIdentifier) {
+          const parentItem = menuData.menu.main.find(item => item.identifier === currentParentIdentifier);
           if (parentItem) {
             newExpanded.add(parentItem.identifier || parentItem.name);
             console.log('useEffect: Added parent to expanded state:', parentItem.name);
-            currentParent = parentItem.parent;
+            currentParentIdentifier = parentItem.parent;
           } else {
-            console.log('useEffect: Parent not found:', currentParent);
+            console.log('useEffect: Parent not found:', currentParentIdentifier);
             break;
           }
         }
@@ -380,45 +406,41 @@ const MenuEditor = () => {
     return count;
   };
 
-  // Check for duplicate identifiers
+  // Get duplicate identifiers
   const getDuplicateIdentifiers = () => {
+    const identifierCounts = {};
+    
+    menuData.menu.main.forEach(item => {
+      const identifier = item.identifier || item.name;
+      if (!identifierCounts[identifier]) {
+        identifierCounts[identifier] = [];
+      }
+      identifierCounts[identifier].push(item);
+    });
+    
+    const duplicates = Object.entries(identifierCounts)
+      .filter(([identifier, items]) => items.length > 1)
+      .map(([identifier, items]) => ({
+        identifier,
+        count: items.length,
+        items,
+        areIdentical: items.every(item => 
+          items[0].name === item.name &&
+          items[0].url === item.url &&
+          items[0].pre === item.pre &&
+          items[0].parent === item.parent &&
+          items[0].weight === item.weight
+        )
+      }));
+    
+    return duplicates;
+  };
+
+  // Get items without identifiers
+  const getItemsWithoutIdentifiers = () => {
     if (!menuData) return [];
     
-    const identifierCounts = new Map();
-    const duplicates = [];
-    
-    // Count occurrences of each identifier
-    menuData.menu.main.forEach(item => {
-      if (item.identifier) {
-        const count = identifierCounts.get(item.identifier) || 0;
-        identifierCounts.set(item.identifier, count + 1);
-        
-        if (count === 1) {
-          // This is the second occurrence, add to duplicates
-          duplicates.push(item.identifier);
-        }
-      }
-    });
-    
-    // Get all items with duplicate identifiers
-    const duplicateItems = [];
-    duplicates.forEach(identifier => {
-      const itemsWithId = menuData.menu.main.filter(item => item.identifier === identifier);
-      
-      // Check if items are completely identical
-      const areIdentical = itemsWithId.length === 2 && 
-        generateDiff(itemsWithId[0], itemsWithId[1]) && 
-        Object.values(generateDiff(itemsWithId[0], itemsWithId[1])).every(field => !field.changed);
-      
-      duplicateItems.push({
-        identifier,
-        count: itemsWithId.length,
-        items: itemsWithId,
-        areIdentical
-      });
-    });
-    
-    return duplicateItems;
+    return menuData.menu.main.filter(item => !item.identifier);
   };
 
   // Merge identical duplicates by deleting the item with higher UID
@@ -671,7 +693,10 @@ const MenuEditor = () => {
           console.log('Temporary update successful:', result.message);
           
           // Set the ref so useEffect can preserve expanded state
-          lastEditedItemRef.current = editingItem;
+          lastEditedItemRef.current = {
+            ...editingItem,
+            _editFormParent: editForm.parent // Store the new parent value
+          };
           
           // Add visual feedback for the edited item
           addEditFeedback(editingItem);
@@ -730,7 +755,10 @@ const MenuEditor = () => {
         setMenuData(updatedMenuData);
         
         // Set the ref so useEffect can preserve expanded state
-        lastEditedItemRef.current = editingItem;
+        lastEditedItemRef.current = {
+          ...editingItem,
+          _editFormParent: editForm.parent // Store the new parent value
+        };
         
         // Add visual feedback for the edited item
         addEditFeedback(editingItem);
@@ -865,16 +893,160 @@ const MenuEditor = () => {
     }
   };
 
-  // Get all available parent options for the current item
+  // Get parent options for dropdown (filtered to exclude current item)
   const getParentOptions = () => {
-    if (!menuData) return [];
-    
     return menuData.menu.main
-      .filter(item => item._uid !== editingItem?._uid)
+      .filter(item => item._uid !== editingItem?._uid) // Changed to _uid filtering
       .map(item => ({
         value: item.identifier || item.name,
         label: `${item.name} (${item.identifier || 'no-id'})`
       }));
+  };
+
+  // Generate parent suggestions for autocomplete
+  const generateParentSuggestions = (input) => {
+    if (!input || !menuData) return [];
+    
+    const searchTerm = input.toLowerCase();
+    
+    // Get all descendants of the current item being edited
+    const getDescendants = (itemId) => {
+      const descendants = new Set();
+      const queue = [itemId];
+      
+      while (queue.length > 0) {
+        const currentId = queue.shift();
+        const children = menuData.menu.main.filter(item => item.parent === currentId);
+        
+        children.forEach(child => {
+          descendants.add(child.identifier || child.name);
+          queue.push(child.identifier || child.name);
+        });
+      }
+      
+      return descendants;
+    };
+    
+    // Get descendants if we're editing an item
+    const descendants = editingItem ? getDescendants(editingItem.identifier || editingItem.name) : new Set();
+    
+    const suggestions = menuData.menu.main
+      .filter(item => 
+        item._uid !== editingItem?._uid && // Exclude current item
+        !descendants.has(item.identifier || item.name) && // Exclude all descendants
+        (item.name.toLowerCase().includes(searchTerm) || 
+         (item.identifier && item.identifier.toLowerCase().includes(searchTerm)))
+      )
+      .slice(0, 10) // Limit to 10 suggestions
+      .map(item => ({
+        value: item.identifier || item.name,
+        label: `${item.name} (${item.identifier || 'no-id'})`,
+        displayName: item.name,
+        identifier: item.identifier
+      }));
+    
+    return suggestions;
+  };
+
+  // Handle parent input change for autocomplete
+  const handleParentInputChange = (value, isEditForm = true) => {
+    const suggestions = generateParentSuggestions(value);
+    setParentSuggestions(suggestions);
+    setShowParentSuggestions(suggestions.length > 0);
+    
+    // Update the appropriate form
+    if (isEditForm) {
+      setEditForm(prev => ({ ...prev, parent: value }));
+    } else {
+      setAddItemForm(prev => ({ ...prev, parent: value }));
+    }
+  };
+
+  // Select a parent suggestion
+  const selectParentSuggestion = (suggestion, isEditForm = true) => {
+    if (isEditForm) {
+      setEditForm(prev => ({ ...prev, parent: suggestion.value }));
+    } else {
+      setAddItemForm(prev => ({ ...prev, parent: suggestion.value }));
+    }
+    setShowParentSuggestions(false);
+    setParentSuggestions([]);
+  };
+
+  // Start inline editing for items without identifiers
+  const startInlineEditing = (item) => {
+    setInlineEditingItem(item);
+    setInlineEditForm({
+      name: item.name || '',
+      identifier: item.identifier || '',
+      url: item.url || '',
+      pre: item.pre || '',
+      parent: item.parent || '',
+      weight: item.weight || 0
+    });
+  };
+
+  // Cancel inline editing
+  const cancelInlineEditing = () => {
+    setInlineEditingItem(null);
+    setInlineEditForm({});
+  };
+
+  // Save inline edited item
+  const saveInlineEditedItem = async () => {
+    if (!inlineEditingItem || !menuData) return;
+
+    try {
+      // Find the item in the flat list and update it by UID
+      const updatedItems = menuData.menu.main.map(item => {
+        if (item._uid === inlineEditingItem._uid) {
+          return {
+            ...item,
+            ...inlineEditForm,
+            _uid: item._uid, // Preserve the UID
+            ...(inlineEditForm.url === '' && { url: undefined }),
+            ...(inlineEditForm.pre === '' && { pre: undefined }),
+            ...(inlineEditForm.parent === '' && { parent: undefined })
+          };
+        }
+        return item;
+      });
+
+      const updatedMenuData = {
+        ...menuData,
+        menu: { ...menuData.menu, main: updatedItems }
+      };
+
+      // Update via API
+      const response = await fetch('/api/menu-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMenuData)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Inline edit successful:', result.message);
+        
+        // Update local state
+        setMenuData(updatedMenuData);
+        
+        // Clear inline editing state
+        setInlineEditingItem(null);
+        setInlineEditForm({});
+        
+        // Add visual feedback for the edited item
+        addEditFeedback(inlineEditingItem);
+        
+      } else {
+        const errorText = await response.text();
+        console.error(`API error ${response.status}:`, errorText);
+        throw new Error(`Failed to save: ${response.status} ${response.statusText}`);
+      }
+    } catch (err) {
+      console.error('Inline edit failed:', err);
+      alert(`Error saving item: ${err.message}`);
+    }
   };
 
   // Render a single menu item with proper indentation
@@ -927,18 +1099,35 @@ const MenuEditor = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
-                <select
-                  value={editForm.parent || ''}
-                  onChange={(e) => setEditForm({...editForm, parent: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">No parent (top level)</option>
-                  {getParentOptions().map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Input
+                    value={editForm.parent || ''}
+                    onChange={(e) => handleParentInputChange(e.target.value, true)}
+                    onFocus={() => {
+                      if (editForm.parent) {
+                        const suggestions = generateParentSuggestions(editForm.parent);
+                        setParentSuggestions(suggestions);
+                        setShowParentSuggestions(suggestions.length > 0);
+                      }
+                    }}
+                    placeholder="Start typing to search for parent..."
+                    className="w-full"
+                  />
+                  {showParentSuggestions && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {parentSuggestions.map((suggestion, index) => (
+                        <div
+                          key={index}
+                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          onClick={() => selectParentSuggestion(suggestion, true)}
+                        >
+                          <div className="font-medium text-gray-900">{suggestion.displayName}</div>
+                          <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
@@ -1130,7 +1319,7 @@ const MenuEditor = () => {
               if (duplicates.length > 0) {
                 return (
                   <div className="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md inline-flex items-center gap-2">
-                    ⚠️ {duplicates.length} duplicate identifier{duplicates.length > 1 ? 's' : ''} found
+                    Identifier errors found: {duplicates.length} duplicate{duplicates.length !== 1 ? 's' : ''}, {getItemsWithoutIdentifiers().length} missing
                   </div>
                 );
               }
@@ -1232,18 +1421,35 @@ const MenuEditor = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
-                  <select
-                    value={addItemForm.parent || ''}
-                    onChange={(e) => setAddItemForm({...addItemForm, parent: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">No parent (top level)</option>
-                    {getParentOptions().map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={addItemForm.parent || ''}
+                      onChange={(e) => handleParentInputChange(e.target.value, false)}
+                      onFocus={() => {
+                        if (addItemForm.parent) {
+                          const suggestions = generateParentSuggestions(addItemForm.parent);
+                          setParentSuggestions(suggestions);
+                          setShowParentSuggestions(suggestions.length > 0);
+                        }
+                      }}
+                      placeholder="Start typing to search for parent..."
+                      className="w-full"
+                    />
+                    {showParentSuggestions && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                        {parentSuggestions.map((suggestion, index) => (
+                          <div
+                            key={index}
+                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => selectParentSuggestion(suggestion, false)}
+                          >
+                            <div className="font-medium text-gray-900">{suggestion.displayName}</div>
+                            <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
@@ -1267,6 +1473,159 @@ const MenuEditor = () => {
           </div>
         </div>
       )}
+
+      {/* Items Without Identifiers Warning */}
+      {(() => {
+        const itemsWithoutIdentifiers = getItemsWithoutIdentifiers();
+        if (itemsWithoutIdentifiers.length > 0) {
+          return (
+            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-800 mb-2">
+                    Items Without Identifiers Found ({itemsWithoutIdentifiers.length} items)
+                  </h3>
+                  <p className="text-yellow-700 mb-3">
+                    The following items are missing identifier fields, which may cause navigation issues:
+                  </p>
+                  <div className="space-y-2">
+                    {itemsWithoutIdentifiers.map((item, index) => (
+                      <div key={item._uid} className="bg-yellow-100 p-3 rounded border border-yellow-300">
+                        {inlineEditingItem && inlineEditingItem._uid === item._uid ? (
+                          // Inline edit form
+                          <div className="bg-white p-4 rounded border border-yellow-400">
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                <Input
+                                  value={inlineEditForm.name}
+                                  onChange={(e) => setInlineEditForm({...inlineEditForm, name: e.target.value})}
+                                  placeholder="Item name"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
+                                <Input
+                                  value={inlineEditForm.identifier}
+                                  onChange={(e) => setInlineEditForm({...inlineEditForm, identifier: e.target.value})}
+                                  placeholder="Unique identifier"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                                <Input
+                                  value={inlineEditForm.url || ''}
+                                  onChange={(e) => setInlineEditForm({...inlineEditForm, url: e.target.value})}
+                                  placeholder="URL path (optional)"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                                <Input
+                                  value={inlineEditForm.pre || ''}
+                                  onChange={(e) => setInlineEditForm({...inlineEditForm, pre: e.target.value})}
+                                  placeholder="Icon name (optional)"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                                <div className="relative">
+                                  <Input
+                                    value={inlineEditForm.parent || ''}
+                                    onChange={(e) => handleParentInputChange(e.target.value, true)}
+                                    onFocus={() => {
+                                      if (inlineEditForm.parent) {
+                                        const suggestions = generateParentSuggestions(inlineEditForm.parent);
+                                        setParentSuggestions(suggestions);
+                                        setShowParentSuggestions(suggestions.length > 0);
+                                      }
+                                    }}
+                                    placeholder="Start typing to search for parent..."
+                                    className="w-full"
+                                  />
+                                  {showParentSuggestions && (
+                                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                                      {parentSuggestions.map((suggestion, index) => (
+                                        <div
+                                          key={index}
+                                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                          onClick={() => {
+                                            setInlineEditForm(prev => ({ ...prev, parent: suggestion.value }));
+                                            setShowParentSuggestions(false);
+                                            setParentSuggestions([]);
+                                          }}
+                                        >
+                                          <div className="font-medium text-gray-900">{suggestion.displayName}</div>
+                                          <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                                <Input
+                                  type="number"
+                                  value={inlineEditForm.weight}
+                                  onChange={(e) => setInlineEditForm({...inlineEditForm, weight: parseInt(e.target.value) || 0})}
+                                  placeholder="Sort weight"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button 
+                                onClick={saveInlineEditedItem} 
+                                className="bg-yellow-600 hover:bg-yellow-700"
+                                size="sm"
+                              >
+                                Save
+                              </Button>
+                              <Button variant="outline" onClick={cancelInlineEditing} size="sm">
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          // Display mode
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium text-yellow-800">
+                                {item.name}
+                              </div>
+                              <div className="text-sm text-yellow-700 mt-1">
+                                {item.url && <span className="mr-3">URL: {item.url}</span>}
+                                {item.weight && <span className="mr-3">Weight: {item.weight}</span>}
+                                {item.parent && <span>Parent: {item.parent}</span>}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => startInlineEditing(item)}
+                                className="text-xs bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700 hover:border-yellow-700"
+                              >
+                                Edit
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-yellow-600 text-sm mt-3">
+                    Each item should have a unique <code>identifier</code> field for proper navigation.
+                    <br />
+                    Click "Edit" on any item above to add an identifier.
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Duplicate Identifier Warning - Separate Box */}
       {(() => {
