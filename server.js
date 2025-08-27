@@ -13,13 +13,22 @@ app.use(express.json({ limit: '50mb' })); // Increased limit for large YAML file
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static('build')); // Serve React build files
 
+// Store temporary menu data in memory
+let temporaryMenuData = null;
+
 // API Routes
 app.get('/api/menu-data', async (req, res) => {
   try {
     const yamlPath = path.join(__dirname, 'main.en.yaml');
     const yamlContent = await fs.readFile(yamlPath, 'utf8');
     const menuData = yaml.load(yamlContent);
-    res.json(menuData);
+    
+    // Initialize temporary data if not set
+    if (!temporaryMenuData) {
+      temporaryMenuData = menuData;
+    }
+    
+    res.json(temporaryMenuData);
   } catch (error) {
     console.error('Error reading YAML file:', error);
     res.status(500).json({ error: 'Failed to read menu data' });
@@ -35,25 +44,41 @@ app.post('/api/menu-data', async (req, res) => {
       return res.status(400).json({ error: 'Invalid menu data structure' });
     }
     
-    console.log(`Saving menu data with ${menuData.menu.main.length} items`);
+    console.log(`Updating temporary menu data with ${menuData.menu.main.length} items`);
     
-    const yamlPath = path.join(__dirname, 'main.en.yaml');
+    // Store in temporary memory only - don't write to file
+    temporaryMenuData = menuData;
     
-    // Convert back to YAML format
-    const yamlContent = yaml.dump(menuData, {
+    console.log('Temporary menu data updated successfully');
+    res.json({ message: 'Temporary menu data updated successfully' });
+  } catch (error) {
+    console.error('Error updating temporary menu data:', error);
+    res.status(500).json({ error: 'Failed to update temporary menu data' });
+  }
+});
+
+// New endpoint to download the modified YAML
+app.get('/api/download-yaml', async (req, res) => {
+  try {
+    if (!temporaryMenuData) {
+      return res.status(400).json({ error: 'No temporary menu data available' });
+    }
+    
+    // Convert to YAML format
+    const yamlContent = yaml.dump(temporaryMenuData, {
       indent: 2,
       lineWidth: -1,
       noRefs: true
     });
     
-    // Write to file
-    await fs.writeFile(yamlPath, yamlContent, 'utf8');
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/yaml');
+    res.setHeader('Content-Disposition', 'attachment; filename="main.en.yaml"');
     
-    console.log('Menu data saved successfully');
-    res.json({ message: 'Menu data saved successfully' });
+    res.send(yamlContent);
   } catch (error) {
-    console.error('Error saving YAML file:', error);
-    res.status(500).json({ error: 'Failed to save menu data' });
+    console.error('Error generating YAML download:', error);
+    res.status(500).json({ error: 'Failed to generate YAML download' });
   }
 });
 
@@ -80,4 +105,5 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Open http://localhost:${PORT} in your browser`);
+  console.log(`Note: Changes are stored in memory only. Use Download button to save changes.`);
 });

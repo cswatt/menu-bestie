@@ -176,9 +176,9 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Try to save to API
+      // Try to save to temporary memory via API
       try {
-        console.log(`Saving menu data with ${updatedItems.length} items...`);
+        console.log(`Updating temporary menu data with ${updatedItems.length} items...`);
         
         const response = await fetch('/api/menu-data', {
           method: 'POST',
@@ -188,7 +188,7 @@ const MenuEditor = () => {
 
         if (response.ok) {
           const result = await response.json();
-          console.log('Save successful:', result.message);
+          console.log('Temporary update successful:', result.message);
           
           // Update local state
           setMenuData(updatedMenuData);
@@ -197,22 +197,11 @@ const MenuEditor = () => {
         } else {
           const errorText = await response.text();
           console.error(`API error ${response.status}:`, errorText);
-          
-          if (response.status === 413) {
-            throw new Error('Menu data is too large to save. Consider breaking it into smaller sections.');
-          } else {
-            throw new Error(`Failed to save: ${response.status} ${response.statusText}`);
-          }
+          throw new Error(`Failed to update: ${response.status} ${response.statusText}`);
         }
       } catch (err) {
-        console.error('API save failed:', err);
-        
-        // Show user-friendly error message
-        if (err.message.includes('too large')) {
-          alert('⚠️ Save failed: The menu data is very large. The changes have been applied locally but not saved to the file. Consider editing fewer items at once.');
-        } else {
-          alert(`⚠️ Save failed: ${err.message}. The changes have been applied locally but not saved to the file.`);
-        }
+        console.error('API update failed:', err);
+        alert(`⚠️ Update failed: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
         
         // Update local state even if API fails
         setMenuData(updatedMenuData);
@@ -220,10 +209,41 @@ const MenuEditor = () => {
         setEditForm({});
       }
     } catch (err) {
-      console.error('Error saving item:', err);
-      alert(`Error saving item: ${err.message}`);
+      console.error('Error updating item:', err);
+      alert(`Error updating item: ${err.message}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Download the modified YAML file
+  const downloadYaml = async () => {
+    try {
+      const response = await fetch('/api/download-yaml');
+      
+      if (response.ok) {
+        const yamlContent = await response.text();
+        
+        // Create a blob and download link
+        const blob = new Blob([yamlContent], { type: 'text/yaml' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'main.en.yaml';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        console.log('YAML file downloaded successfully');
+      } else {
+        const errorText = await response.text();
+        console.error(`Download error ${response.status}:`, errorText);
+        alert(`Download failed: ${response.status} ${response.statusText}`);
+      }
+    } catch (err) {
+      console.error('Error downloading YAML:', err);
+      alert(`Download failed: ${err.message}`);
     }
   };
 
@@ -443,15 +463,15 @@ const MenuEditor = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Menu Bestie</h1>
-            <p className="text-gray-600">Edit navigation menu configuration</p>
+            <p className="text-gray-600">Edit navigation menu configuration (changes are temporary until downloaded)</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline">
-              📥 Download
+            <Button variant="outline" onClick={downloadYaml}>
+              📥 Download main.en.yaml
             </Button>
-            <Button>
-              💾 Save All
-            </Button>
+            <div className="text-sm text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
+              💡 Changes are stored in memory only
+            </div>
           </div>
         </div>
       </div>
