@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 
@@ -12,11 +12,90 @@ const MenuEditor = () => {
   const [expandedItems, setExpandedItems] = useState(new Set()); // Track expanded state
   const [resolvingDuplicates, setResolvingDuplicates] = useState(null); // Track which duplicates are being resolved
   const [duplicateResolution, setDuplicateResolution] = useState(null); // Store the resolution data
+  
+  // Track recently edited items for visual feedback
+  const [recentlyEditedItems, setRecentlyEditedItems] = useState(new Set());
 
-  // Load menu data from the YAML file
+  // Track the last edited item to preserve its expanded state
+  const lastEditedItemRef = useRef(null);
+
+  // Add visual feedback for recently edited items
+  const addEditFeedback = (item) => {
+    if (item.identifier) {
+      setRecentlyEditedItems(prev => new Set([...prev, item.identifier]));
+      
+      // Remove the feedback after 3 seconds
+      setTimeout(() => {
+        setRecentlyEditedItems(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(item.identifier);
+          return newSet;
+        });
+      }, 3000);
+    }
+  };
+
+  // Preserve expanded state when menu data changes
+  useEffect(() => {
+    if (lastEditedItemRef.current && menuData) {
+      const editingItem = lastEditedItemRef.current;
+      console.log('useEffect: Preserving expanded state for:', editingItem.name);
+      
+      if (editingItem.parent) {
+        const newExpanded = new Set();
+        
+        // Find all parent items in the hierarchy and keep them expanded
+        let currentParent = editingItem.parent;
+        while (currentParent) {
+          const parentItem = menuData.menu.main.find(item => item.identifier === currentParent);
+          if (parentItem) {
+            newExpanded.add(parentItem.identifier || parentItem.name);
+            console.log('useEffect: Added parent to expanded state:', parentItem.name);
+            currentParent = parentItem.parent;
+          } else {
+            console.log('useEffect: Parent not found:', currentParent);
+            break;
+          }
+        }
+        
+        // Only add the current item's identifier if it was already expanded before
+        if (editingItem.identifier && expandedItems.has(editingItem.identifier)) {
+          newExpanded.add(editingItem.identifier);
+          console.log('useEffect: Preserved current item expanded state:', editingItem.identifier);
+        } else if (editingItem.identifier) {
+          console.log('useEffect: Current item was not expanded, not adding to expanded state:', editingItem.identifier);
+        }
+        
+        // Add any existing expanded items that aren't already included
+        expandedItems.forEach(item => {
+          if (!newExpanded.has(item)) {
+            newExpanded.add(item);
+            console.log('useEffect: Preserved existing expanded item:', item);
+          }
+        });
+        
+        console.log('useEffect: Final expanded state:', Array.from(newExpanded));
+        setExpandedItems(newExpanded);
+        
+        // Clear the ref after preserving state
+        lastEditedItemRef.current = null;
+      }
+    }
+  }, [menuData]); // Removed expandedItems dependency to prevent infinite loop
+
+  // Load menu data on component mount
   useEffect(() => {
     loadMenuData();
   }, []);
+
+  // Initialize expanded state when menu data is loaded (only on initial load)
+  useEffect(() => {
+    if (menuData && menuData.menu && menuData.menu.main && expandedItems.size === 0) {
+      const topLevelItems = menuData.menu.main.filter(item => !item.parent);
+      const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
+      setExpandedItems(initialExpanded);
+    }
+  }, [menuData, expandedItems.size]);
 
   // Generate unique UIDs for items
   const addUIDsToItems = (items) => {
@@ -28,14 +107,97 @@ const MenuEditor = () => {
     }));
   };
 
-  // Initialize with all top-level items expanded by default
-  useEffect(() => {
-    if (menuData && menuData.menu && menuData.menu.main) {
-      const topLevelItems = menuData.menu.main.filter(item => !item.parent);
-      const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
-      setExpandedItems(initialExpanded);
+  // Generate diff between two items
+  const generateDiff = (item1, item2) => {
+    const allFields = new Set([
+      'name', 'identifier', 'url', 'pre', 'parent', 'weight'
+    ]);
+    
+    const diff = {};
+    
+    allFields.forEach(field => {
+      const value1 = item1[field];
+      const value2 = item2[field];
+      
+      if (value1 !== value2) {
+        diff[field] = {
+          item1: value1,
+          item2: value2,
+          changed: true
+        };
+      } else {
+        diff[field] = {
+          item1: value1,
+          item2: value2,
+          changed: false
+        };
+      }
+    });
+    
+    return diff;
+  };
+
+  // Delete a specific item by UID
+  const deleteItem = async (itemToDelete) => {
+    if (!confirm(`Are you sure you want to delete "${itemToDelete.name}"?`)) {
+      return;
     }
-  }, [menuData]);
+
+    try {
+      // Remove the specific item by UID
+      const updatedItems = menuData.menu.main.filter(item => item._uid !== itemToDelete._uid);
+      
+      const updatedMenuData = {
+        ...menuData,
+        menu: { ...menuData.menu, main: updatedItems }
+      };
+
+      // Update temporary data via API
+      try {
+        console.log(`Deleting item: ${itemToDelete.name}`);
+        
+        const response = await fetch('/api/menu-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedMenuData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Item deletion successful:', result.message);
+          
+          // Update local state
+          setMenuData(updatedMenuData);
+          
+          // If we were resolving duplicates, check if this resolves the issue
+          if (resolvingDuplicates && duplicateResolution) {
+            const remainingDuplicates = updatedItems.filter(item => 
+              item.identifier === duplicateResolution.identifier
+            );
+            
+            if (remainingDuplicates.length <= 1) {
+              // Duplicate resolved, close the resolution interface
+              setResolvingDuplicates(null);
+              setDuplicateResolution(null);
+            }
+          }
+        } else {
+          const errorText = await response.text();
+          console.error(`API error ${response.status}:`, errorText);
+          throw new Error(`Failed to delete item: ${response.status} ${response.statusText}`);
+        }
+      } catch (err) {
+        console.error('API update failed:', err);
+        alert(`⚠️ Failed to delete item: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
+        
+        // Update local state even if API fails
+        setMenuData(updatedMenuData);
+      }
+    } catch (err) {
+      console.error('Error deleting item:', err);
+      alert(`Error deleting item: ${err.message}`);
+    }
+  };
 
   // Toggle expand/collapse for an item
   const toggleExpanded = (item) => {
@@ -61,91 +223,22 @@ const MenuEditor = () => {
   const startResolvingDuplicates = (duplicateData) => {
     setResolvingDuplicates(duplicateData);
     
-    // Get the actual items for comparison
+    // Get the actual items for comparison by identifier (since we're resolving duplicates)
     const items = menuData.menu.main.filter(item => item.identifier === duplicateData.identifier);
     setDuplicateResolution({
       identifier: duplicateData.identifier,
-      items: items,
-      selectedItem: null
+      items: items
     });
+    
+    // Clear any ongoing editing to prevent conflicts
+    setEditingItem(null);
+    setEditForm({});
   };
 
   // Cancel duplicate resolution
   const cancelDuplicateResolution = () => {
     setResolvingDuplicates(null);
     setDuplicateResolution(null);
-  };
-
-  // Select which item to keep
-  const selectItemToKeep = (itemIndex) => {
-    setDuplicateResolution(prev => ({
-      ...prev,
-      selectedItem: itemIndex
-    }));
-  };
-
-  // Confirm duplicate resolution
-  const confirmDuplicateResolution = async () => {
-    if (!duplicateResolution || duplicateResolution.selectedItem === null) return;
-
-    try {
-      const selectedItem = duplicateResolution.items[duplicateResolution.selectedItem];
-      const itemsToRemove = duplicateResolution.items.filter((_, index) => index !== duplicateResolution.selectedItem);
-      
-      console.log('Resolving duplicates:', {
-        keeping: selectedItem.name,
-        removing: itemsToRemove.map(item => item.name)
-      });
-      
-      // Remove the items that weren't selected using UIDs for precise identification
-      const updatedItems = menuData.menu.main.filter(item => {
-        // Keep the item if it's NOT one of the items we want to remove (using UID)
-        return !itemsToRemove.some(removeItem => item._uid === removeItem._uid);
-      });
-
-      console.log(`Original items: ${menuData.menu.main.length}, Updated items: ${updatedItems.length}, Removed: ${itemsToRemove.length}`);
-
-      const updatedMenuData = {
-        ...menuData,
-        menu: { ...menuData.menu, main: updatedItems }
-      };
-
-      // Update temporary data via API
-      try {
-        console.log(`Resolving duplicates: keeping 1 item, removing ${itemsToRemove.length} items`);
-        
-        const response = await fetch('/api/menu-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedMenuData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Duplicate resolution successful:', result.message);
-          
-          // Update local state
-          setMenuData(updatedMenuData);
-          setResolvingDuplicates(null);
-          setDuplicateResolution(null);
-        } else {
-          const errorText = await response.text();
-          console.error(`API error ${response.status}:`, errorText);
-          throw new Error(`Failed to resolve duplicates: ${response.status} ${response.statusText}`);
-        }
-      } catch (err) {
-        console.error('API update failed:', err);
-        alert(`⚠️ Failed to resolve duplicates: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
-        
-        // Update local state even if API fails
-        setMenuData(updatedMenuData);
-        setResolvingDuplicates(null);
-        setDuplicateResolution(null);
-      }
-    } catch (err) {
-      console.error('Error resolving duplicates:', err);
-      alert(`Error resolving duplicates: ${err.message}`);
-    }
   };
 
   // Expand all items
@@ -218,14 +311,76 @@ const MenuEditor = () => {
     const duplicateItems = [];
     duplicates.forEach(identifier => {
       const itemsWithId = menuData.menu.main.filter(item => item.identifier === identifier);
+      
+      // Check if items are completely identical
+      const areIdentical = itemsWithId.length === 2 && 
+        generateDiff(itemsWithId[0], itemsWithId[1]) && 
+        Object.values(generateDiff(itemsWithId[0], itemsWithId[1])).every(field => !field.changed);
+      
       duplicateItems.push({
         identifier,
         count: itemsWithId.length,
-        items: itemsWithId.map(item => item.name)
+        items: itemsWithId,
+        areIdentical
       });
     });
     
     return duplicateItems;
+  };
+
+  // Merge identical duplicates by deleting the item with higher UID
+  const mergeIdenticalDuplicates = async (duplicateData) => {
+    if (!duplicateData.areIdentical || duplicateData.items.length !== 2) return;
+    
+    const [item1, item2] = duplicateData.items;
+    const itemToDelete = item1._uid > item2._uid ? item1 : item2;
+    const itemToKeep = item1._uid > item2._uid ? item2 : item1;
+    
+    if (!confirm(`Merge identical items? "${itemToDelete.name}" will be deleted, keeping "${itemToKeep.name}".`)) {
+      return;
+    }
+
+    try {
+      // Remove the item with higher UID
+      const updatedItems = menuData.menu.main.filter(item => item._uid !== itemToDelete._uid);
+      
+      const updatedMenuData = {
+        ...menuData,
+        menu: { ...menuData.menu, main: updatedItems }
+      };
+
+      // Update temporary data via API
+      try {
+        console.log(`Merging identical duplicates: deleting "${itemToDelete.name}" (UID: ${itemToDelete._uid})`);
+        
+        const response = await fetch('/api/menu-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedMenuData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Merge successful:', result.message);
+          
+          // Update local state
+          setMenuData(updatedMenuData);
+        } else {
+          const errorText = await response.text();
+          console.error(`API error ${response.status}:`, errorText);
+          throw new Error(`Failed to merge: ${response.status} ${response.statusText}`);
+        }
+      } catch (err) {
+        console.error('API update failed:', err);
+        alert(`⚠️ Failed to merge: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
+        
+        // Update local state even if API fails
+        setMenuData(updatedMenuData);
+      }
+    } catch (err) {
+      console.error('Error merging duplicates:', err);
+      alert(`Error merging duplicates: ${err.message}`);
+    }
   };
 
   const loadMenuData = async () => {
@@ -307,25 +462,32 @@ const MenuEditor = () => {
   const buildHierarchy = (items) => {
     if (!items || !Array.isArray(items)) return [];
     
-    // Create a map of all items by identifier
+    // Create a map of all items by UID (unique identifier)
     const itemMap = new Map();
     const rootItems = [];
     
     // First pass: create item objects with empty children arrays
     items.forEach(item => {
       const itemWithChildren = { ...item, children: [] };
-      itemMap.set(item.identifier || item.name, itemWithChildren);
+      itemMap.set(item._uid, itemWithChildren);
     });
     
     // Second pass: build parent-child relationships
     items.forEach(item => {
-      const currentItem = itemMap.get(item.identifier || item.name);
+      const currentItem = itemMap.get(item._uid);
       
-      if (item.parent && itemMap.has(item.parent)) {
-        // This item has a parent, add it to parent's children
-        const parent = itemMap.get(item.parent);
-        if (!parent.children) parent.children = [];
-        parent.children.push(currentItem);
+      if (item.parent) {
+        // Find parent by identifier (since parent field uses identifier)
+        const parentItem = items.find(p => p.identifier === item.parent);
+        if (parentItem && itemMap.has(parentItem._uid)) {
+          // This item has a parent, add it to parent's children
+          const parent = itemMap.get(parentItem._uid);
+          if (!parent.children) parent.children = [];
+          parent.children.push(currentItem);
+        } else {
+          // Parent not found, treat as root item
+          rootItems.push(currentItem);
+        }
       } else {
         // This is a root item
         rootItems.push(currentItem);
@@ -361,12 +523,15 @@ const MenuEditor = () => {
       parent: item.parent || '',
       weight: item.weight || 0
     });
+    lastEditedItemRef.current = item; // Set the ref to the item being edited
+    addEditFeedback(item); // Add visual feedback
   };
 
   // Cancel editing
   const cancelEditing = () => {
     setEditingItem(null);
     setEditForm({});
+    lastEditedItemRef.current = null; // Clear the ref
   };
 
   // Save the edited item
@@ -376,22 +541,10 @@ const MenuEditor = () => {
     try {
       setIsSaving(true);
       
-      // Find the item in the flat list and update it
+      // Find the item in the flat list and update it by UID (unique identifier)
       const updatedItems = menuData.menu.main.map(item => {
-        // Fix the matching logic to prevent duplication
-        if (item.identifier === editingItem.identifier) {
-          // Match by identifier (most reliable)
-          return {
-            ...item,
-            ...editForm,
-            _uid: item._uid, // Preserve the UID
-            // Remove empty fields
-            ...(editForm.url === '' && { url: undefined }),
-            ...(editForm.pre === '' && { pre: undefined }),
-            ...(editForm.parent === '' && { parent: undefined })
-          };
-        } else if (!item.identifier && !editingItem.identifier && item.name === editingItem.name) {
-          // Match by name only when both items have no identifier
+        if (item._uid === editingItem._uid) {
+          // Match by UID (most reliable, handles duplicate identifiers)
           return {
             ...item,
             ...editForm,
@@ -424,10 +577,38 @@ const MenuEditor = () => {
           const result = await response.json();
           console.log('Temporary update successful:', result.message);
           
+          // Set the ref so useEffect can preserve expanded state
+          lastEditedItemRef.current = editingItem;
+          
+          // Add visual feedback for the edited item
+          addEditFeedback(editingItem);
+          
           // Update local state
           setMenuData(updatedMenuData);
+          
+          // Clear editing state
           setEditingItem(null);
           setEditForm({});
+          
+          // If we were resolving duplicates, refresh the duplicate data
+          if (resolvingDuplicates && duplicateResolution) {
+            // Check if the duplicate is still valid after the edit
+            const remainingDuplicates = updatedItems.filter(item => 
+              item.identifier === duplicateResolution.identifier
+            );
+            
+            if (remainingDuplicates.length <= 1) {
+              // Duplicate resolved, close the resolution interface
+              setResolvingDuplicates(null);
+              setDuplicateResolution(null);
+            } else {
+              // Update the duplicate resolution data with the new item data
+              setDuplicateResolution({
+                identifier: duplicateResolution.identifier,
+                items: remainingDuplicates
+              });
+            }
+          }
         } else {
           const errorText = await response.text();
           console.error(`API error ${response.status}:`, errorText);
@@ -439,8 +620,34 @@ const MenuEditor = () => {
         
         // Update local state even if API fails
         setMenuData(updatedMenuData);
+        
+        // Set the ref so useEffect can preserve expanded state
+        lastEditedItemRef.current = editingItem;
+        
+        // Add visual feedback for the edited item
+        addEditFeedback(editingItem);
+        
+        // Clear editing state
         setEditingItem(null);
         setEditForm({});
+        lastEditedItemRef.current = null; // Clear the ref
+        
+        // Refresh duplicate data if needed
+        if (resolvingDuplicates && duplicateResolution) {
+          const remainingDuplicates = updatedItems.filter(item => 
+            item.identifier === duplicateResolution.identifier
+          );
+          
+          if (remainingDuplicates.length <= 1) {
+            setResolvingDuplicates(null);
+            setDuplicateResolution(null);
+          } else {
+            setDuplicateResolution({
+              identifier: duplicateResolution.identifier,
+              items: remainingDuplicates
+            });
+          }
+        }
       }
     } catch (err) {
       console.error('Error updating item:', err);
@@ -488,11 +695,13 @@ const MenuEditor = () => {
     }
 
     try {
-      // Clear any ongoing operations
+      // Clear ALL frontend state comprehensively
       setEditingItem(null);
       setEditForm({});
       setResolvingDuplicates(null);
       setDuplicateResolution(null);
+      setSearchTerm(''); // Clear search term
+      setIsSaving(false); // Clear saving state
       
       // Call the reset API endpoint
       const response = await fetch('/api/reset', {
@@ -524,9 +733,24 @@ const MenuEditor = () => {
       console.error('Error resetting to original data:', err);
       alert(`Error resetting: ${err.message}`);
       
-      // Fallback: try to reload data anyway
+      // Fallback: try to reload data anyway and clear all state
       try {
         await loadMenuData();
+        
+        // Clear all state even if API fails
+        setEditingItem(null);
+        setEditForm({});
+        setResolvingDuplicates(null);
+        setDuplicateResolution(null);
+        setSearchTerm('');
+        setIsSaving(false);
+        
+        // Reset expanded state
+        if (menuData && menuData.menu && menuData.menu.main) {
+          const topLevelItems = menuData.menu.main.filter(item => !item.parent);
+          const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
+          setExpandedItems(initialExpanded);
+        }
       } catch (fallbackErr) {
         console.error('Fallback reload also failed:', fallbackErr);
       }
@@ -538,10 +762,7 @@ const MenuEditor = () => {
     if (!menuData) return [];
     
     return menuData.menu.main
-      .filter(item => 
-        item.identifier !== editingItem?.identifier && 
-        item.name !== editingItem?.name
-      )
+      .filter(item => item._uid !== editingItem?._uid)
       .map(item => ({
         value: item.identifier || item.name,
         label: `${item.name} (${item.identifier || 'no-id'})`
@@ -552,15 +773,15 @@ const MenuEditor = () => {
   const renderMenuItem = (item, level = 0) => {
     const indent = level * 24; // Increased indentation for better visual hierarchy
     const hasChildren = item.children && item.children.length > 0;
-    const isEditing = editingItem && (
-      editingItem.identifier === item.identifier || 
-      (editingItem.name === editingItem.name && !item.identifier)
-    );
+    const isEditing = editingItem && editingItem._uid === item._uid;
     const expanded = isExpanded(item);
+    
+    // Don't show edit form in main menu if we're editing within duplicate resolution
+    const shouldShowEditForm = isEditing && !resolvingDuplicates;
     
     return (
       <div key={item.identifier || item.name} style={{ marginLeft: `${indent}px` }}>
-        {isEditing ? (
+        {shouldShowEditForm ? (
           // Edit form
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-2">
             <div className="grid grid-cols-2 gap-3">
@@ -636,7 +857,11 @@ const MenuEditor = () => {
           </div>
         ) : (
           // Display mode
-          <div className="flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md transition-colors border-l-2 border-gray-200">
+          <div className={`flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md transition-all duration-300 border-l-2 ${
+            recentlyEditedItems.has(item.identifier) 
+              ? 'bg-purple-100 border-purple-400 shadow-sm' 
+              : 'border-gray-200'
+          }`}>
             {/* Expand/Collapse button */}
             {hasChildren && (
               <button
@@ -648,12 +873,7 @@ const MenuEditor = () => {
               </button>
             )}
             
-            {/* Item icon */}
-            <div className="text-gray-500">
-              {item.url ? '🔗' : hasChildren ? '📁' : '📄'}
-            </div>
-            
-            {/* Item content */}
+            {/* Item content - left side */}
             <div className="flex-1">
               <span className="font-medium">{item.name}</span>
               {item.identifier && (
@@ -662,31 +882,52 @@ const MenuEditor = () => {
                 </span>
               )}
               {item.url && (
-                <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                <span className="ml-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
                   {item.url}
                 </span>
               )}
-              {item.weight && (
-                <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                  w: {item.weight}
-                </span>
-              )}
-              {item.parent && (
+              {/* {item.parent && (
                 <span className="ml-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
                   parent: {item.parent}
                 </span>
-              )}
+              )} */}
             </div>
             
-            {/* Edit button */}
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => startEditing(item)}
-              className="text-xs"
-            >
-              ✏️ Edit
-            </Button>
+            {/* Right side - weight and edit button */}
+            <div className="flex items-center gap-2">
+              {item.weight && (
+                <span className={`text-xs px-2 py-1 rounded ${
+                  // Check if this item has the same parent and weight as another item
+                  (() => {
+                    if (!item.parent || !item.weight) return 'text-gray-500 bg-gray-100';
+                    
+                    const conflictingItems = menuData.menu.main.filter(otherItem => 
+                      otherItem._uid !== item._uid && 
+                      otherItem.parent === item.parent && 
+                      otherItem.weight === item.weight
+                    );
+                    
+                    return conflictingItems.length > 0 
+                      ? 'text-red-600 bg-red-100' 
+                      : 'text-gray-500 bg-gray-100';
+                  })()
+                }`}>
+                  w: {item.weight}
+                </span>
+              )}
+              
+              {/* Edit button - only show if not in duplicate resolution */}
+              {!resolvingDuplicates && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => startEditing(item)}
+                  className="text-xs"
+                >
+                  Edit
+                </Button>
+              )}
+            </div>
           </div>
         )}
         
@@ -766,7 +1007,7 @@ const MenuEditor = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Menu Bestie</h1>
-            <p className="text-gray-600">Edit navigation menu configuration (changes are temporary until downloaded)</p>
+            <p className="text-gray-600">Edit navigation menu configuration.</p>
             {(() => {
               const duplicates = getDuplicateIdentifiers();
               if (duplicates.length > 0) {
@@ -780,14 +1021,21 @@ const MenuEditor = () => {
             })()}
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={downloadYaml}>
+            <Button 
+              onClick={downloadYaml}
+              className="bg-green-600 text-white border-green-600 hover:bg-green-700 hover:border-green-700"
+            >
               📥 Download main.en.yaml
             </Button>
-            <Button variant="outline" onClick={resetToOriginal}>
-              ↩️ Reset to Original
+            <Button 
+              onClick={resetToOriginal}
+              variant="outline"
+              className="text-gray-700 border-gray-300 hover:bg-gray-50"
+            >
+              Reset to Original
             </Button>
             <div className="text-sm text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
-              💡 Changes are stored in memory only
+              Changes are stored in memory only.
             </div>
           </div>
         </div>
@@ -797,22 +1045,21 @@ const MenuEditor = () => {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
             <Input
               placeholder="Search menu items..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-64"
+              className="w-64"
             />
           </div>
           
           {/* Expand/Collapse Controls */}
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={expandAll}>
-              📂 Expand All
+              Expand All
             </Button>
             <Button variant="outline" size="sm" onClick={collapseAll}>
-              📁 Collapse All
+              Collapse All
             </Button>
           </div>
           
@@ -822,7 +1069,7 @@ const MenuEditor = () => {
           </div>
           
           <Button>
-            ➕ Add Top-Level Item
+            Add Top-Level Item
           </Button>
         </div>
       </div>
@@ -836,7 +1083,6 @@ const MenuEditor = () => {
             return (
               <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-6">
                 <div className="flex items-start gap-3">
-                  <div className="text-red-600 text-xl">⚠️</div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-red-800 mb-2">
                       Duplicate Identifiers Found ({duplicates.length} unique duplicates)
@@ -850,31 +1096,216 @@ const MenuEditor = () => {
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="font-medium text-red-800">
-                                "{dup.identifier}" used {dup.count} times:
+                                "{dup.identifier}" used {dup.count} times
                               </div>
                               <div className="text-sm text-red-700 mt-1">
-                                {dup.items.map((name, nameIndex) => (
-                                  <span key={nameIndex}>
-                                    {nameIndex > 0 ? ', ' : ''}
-                                    <span className="font-medium">{name}</span>
-                                  </span>
-                                ))}
+                               
                               </div>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => startResolvingDuplicates(dup)}
-                              className="ml-3 bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
-                            >
-                              🔧 Resolve
-                            </Button>
+                            <div className="flex gap-2">
+                              {dup.areIdentical ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => mergeIdenticalDuplicates(dup)}
+                                  className="bg-red-600 text-white border-green-600 hover:bg-red-700 hover:border-green-700"
+                                >
+                                  Merge
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startResolvingDuplicates(dup)}
+                                  className="ml-3 bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-green-700"
+                                >
+                                  Resolve
+                                </Button>
+                              )}
+                            </div>
                           </div>
+                          
+                          {/* Expanded resolution interface */}
+                          {resolvingDuplicates && resolvingDuplicates.identifier === dup.identifier && duplicateResolution && (
+                            <div className="mt-4 p-4 bg-white rounded border border-red-200">
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-red-800 mb-2">
+                                  Duplicate Items Comparison
+                                </h4>
+                                <p className="text-red-700 text-sm">
+                                  Review the differences and edit or delete items as needed.
+                                </p>
+                              </div>
+                              
+                              {/* Individual Item Actions */}
+                              <div className="space-y-3">
+                                {duplicateResolution.items.map((item, itemIndex) => (
+                                  <div 
+                                    key={item._uid} 
+                                    className="p-3 rounded-lg border border-gray-200 bg-gray-50"
+                                  >
+                                    {/* Show edit form if this item is being edited */}
+                                    {editingItem && editingItem._uid === item._uid ? (
+                                      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                            <Input
+                                              value={editForm.name}
+                                              onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                                              placeholder="Item name"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
+                                            <Input
+                                              value={editForm.identifier}
+                                              onChange={(e) => setEditForm({...editForm, identifier: e.target.value})}
+                                              placeholder="Unique identifier"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                                            <Input
+                                              value={editForm.url || ''}
+                                              onChange={(e) => setEditForm({...editForm, url: e.target.value})}
+                                              placeholder="URL path (optional)"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                                            <Input
+                                              value={editForm.pre || ''}
+                                              onChange={(e) => setEditForm({...editForm, pre: e.target.value})}
+                                              placeholder="Icon name (optional)"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                                            <select
+                                              value={editForm.parent || ''}
+                                              onChange={(e) => setEditForm({...editForm, parent: e.target.value})}
+                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                              <option value="">No parent (top level)</option>
+                                              {getParentOptions().map(option => (
+                                                <option key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                                            <Input
+                                              type="number"
+                                              value={editForm.weight}
+                                              onChange={(e) => setEditForm({...editForm, weight: parseInt(e.target.value) || 0})}
+                                              placeholder="Sort weight"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="flex gap-2 mt-3">
+                                          <Button 
+                                            onClick={saveEditedItem} 
+                                            disabled={isSaving}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                            size="sm"
+                                          >
+                                            {isSaving ? 'Saving...' : 'Save'}
+                                          </Button>
+                                          <Button variant="outline" onClick={cancelEditing} size="sm">
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      /* Show normal item display if not editing */
+                                      <>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="font-medium text-gray-900">
+                                            Item {itemIndex + 1}: {item.name}
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => startEditing(item)}
+                                              className="text-xs bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700"
+                                            >
+                                              Edit
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => deleteItem(item)}
+                                              className="text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
+                                            >
+                                              Delete
+                                            </Button>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="text-sm text-gray-600 space-y-1">
+                                          {(() => {
+                                            if (duplicateResolution.items.length === 2) {
+                                              const otherItem = duplicateResolution.items[1 - itemIndex];
+                                              const diff = generateDiff(item, otherItem);
+                                              
+                                              return Object.entries(diff).map(([field, values]) => (
+                                                <div 
+                                                  key={field}
+                                                  className={`p-2 rounded ${
+                                                    values.changed 
+                                                      ? 'bg-red-50 border border-red-200 text-red-800' 
+                                                      : 'bg-gray-100'
+                                                  }`}
+                                                >
+                                                  <span className="font-medium">{field}:</span> {values.item1 || '(empty)'}
+                                                  {values.changed && (
+                                                    <span className="ml-2 text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                                                      differs from Item {2 - itemIndex}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ));
+                                            } else {
+                                              // Fallback for more than 2 items
+                                              return (
+                                                <>
+                                                  <div><span className="font-medium">Identifier:</span> {item.identifier}</div>
+                                                  {item.url && <div><span className="font-medium">URL:</span> {item.url}</div>}
+                                                  {item.weight && <div><span className="font-medium">Weight:</span> {item.weight}</div>}
+                                                  {item.parent && <div><span className="font-medium">Parent:</span> {item.parent}</div>}
+                                                </>
+                                              );
+                                            }
+                                          })()}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              
+                              <div className="flex gap-3 mt-4">
+                                <Button 
+                                  variant="outline" 
+                                  onClick={cancelDuplicateResolution}
+                                  size="sm"
+                                >
+                                  Close
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                     <p className="text-red-600 text-sm mt-3">
-                      💡 Consider giving each item a unique identifier to avoid conflicts.
+                      Each item should have a unique <code>identifier</code> field.
+                      <br />
+                      If two items have completely identical content, you can merge them to keep one and delete the other.
                     </p>
                   </div>
                 </div>
@@ -884,83 +1315,7 @@ const MenuEditor = () => {
           return null;
         })()}
 
-        {/* Duplicate Resolution Dialog */}
-        {resolvingDuplicates && duplicateResolution && (
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <div className="flex items-start gap-3">
-              <div className="text-blue-600 text-xl">🔧</div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-blue-800 mb-4">
-                  Resolve Duplicate: "{duplicateResolution.identifier}"
-                </h3>
-                <p className="text-blue-700 mb-4">
-                  Choose which item to keep. The other item(s) will be deleted.
-                </p>
-                
-                <div className="space-y-3">
-                  {duplicateResolution.items.map((item, index) => (
-                    <div 
-                      key={index} 
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                        duplicateResolution.selectedItem === index
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 bg-white hover:border-blue-300'
-                      }`}
-                      onClick={() => selectItemToKeep(index)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          duplicateResolution.selectedItem === index
-                            ? 'border-green-500 bg-green-500 text-white'
-                            : 'border-gray-400'
-                        }`}>
-                          {duplicateResolution.selectedItem === index && '✓'}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{item.name}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            <span className="font-medium">Identifier:</span> {item.identifier}
-                            {item.url && (
-                              <>
-                                <br />
-                                <span className="font-medium">URL:</span> {item.url}
-                              </>
-                            )}
-                            {item.weight && (
-                              <>
-                                <br />
-                                <span className="font-medium">Weight:</span> {item.weight}
-                              </>
-                            )}
-                            {item.parent && (
-                              <>
-                                <br />
-                                <span className="font-medium">Parent:</span> {item.parent}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="flex gap-3 mt-6">
-                  <Button
-                    onClick={confirmDuplicateResolution}
-                    disabled={duplicateResolution.selectedItem === null}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    ✅ Confirm Resolution
-                  </Button>
-                  <Button variant="outline" onClick={cancelDuplicateResolution}>
-                    ❌ Cancel
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Remove the separate blue resolution dialog */}
 
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Menu Structure</h2>

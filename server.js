@@ -16,6 +16,18 @@ app.use(express.static('build')); // Serve React build files
 // Store temporary menu data in memory
 let temporaryMenuData = null;
 
+// Helper function to strip UIDs from menu items
+const stripUIDsFromItems = (items) => {
+  if (!items || !Array.isArray(items)) return items;
+  return items.map(item => {
+    const { _uid, ...itemWithoutUID } = item;
+    if (item.children && item.children.length > 0) {
+      itemWithoutUID.children = stripUIDsFromItems(item.children);
+    }
+    return itemWithoutUID;
+  });
+};
+
 // Helper function to add UIDs to items
 const addUIDsToItems = (items) => {
   if (!items || !Array.isArray(items)) return items;
@@ -87,20 +99,29 @@ app.post('/api/menu-data', async (req, res) => {
 app.get('/api/download-yaml', async (req, res) => {
   try {
     if (!temporaryMenuData) {
-      return res.status(400).json({ error: 'No temporary menu data available' });
+      return res.status(404).json({ error: 'No temporary menu data available' });
     }
-    
-    // Convert to YAML format
-    const yamlContent = yaml.dump(temporaryMenuData, {
+
+    // Strip UIDs from the data before converting to YAML
+    const dataWithoutUIDs = {
+      ...temporaryMenuData,
+      menu: {
+        ...temporaryMenuData.menu,
+        main: stripUIDsFromItems(temporaryMenuData.menu.main)
+      }
+    };
+
+    const yamlContent = yaml.dump(dataWithoutUIDs, {
       indent: 2,
       lineWidth: -1,
-      noRefs: true
+      noRefs: true,
+      quotingType: '"',
+      forceQuotes: false,
+      defaultStringType: 'PLAIN'
     });
-    
-    // Set headers for file download
+
     res.setHeader('Content-Type', 'text/yaml');
     res.setHeader('Content-Disposition', 'attachment; filename="main.en.yaml"');
-    
     res.send(yamlContent);
   } catch (error) {
     console.error('Error generating YAML download:', error);
@@ -113,7 +134,7 @@ app.post('/api/reset', async (req, res) => {
   try {
     console.log('Resetting temporary menu data to original file');
     
-    // Clear temporary data
+    // Completely clear temporary data
     temporaryMenuData = null;
     
     // Force a fresh read from the original file
