@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import * as yaml from 'js-yaml';
 
 const MenuEditor = () => {
   const [menuData, setMenuData] = useState(null);
@@ -18,6 +19,7 @@ const MenuEditor = () => {
   
   // Add item modal state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showUploadNewModal, setShowUploadNewModal] = useState(false);
   const [addItemForm, setAddItemForm] = useState({
     name: '',
     identifier: '',
@@ -34,6 +36,10 @@ const MenuEditor = () => {
   // Inline edit state for items without identifiers
   const [inlineEditingItem, setInlineEditingItem] = useState(null);
   const [inlineEditForm, setInlineEditForm] = useState({});
+
+  // Uploaded file state
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [originalMenuData, setOriginalMenuData] = useState(null);
 
   // Track the last edited item to preserve its expanded state
   const lastEditedItemRef = useRef(null);
@@ -139,14 +145,12 @@ const MenuEditor = () => {
           weight: 0
         });
         
-        console.log('New item added successfully:', newItem.name);
+
       } else {
         const errorText = await response.text();
-        console.error(`API error ${response.status}:`, errorText);
         throw new Error(`Failed to add item: ${response.status} ${response.statusText}`);
       }
     } catch (err) {
-      console.error('Error adding new item:', err);
       alert(`Error adding item: ${err.message}`);
     }
   };
@@ -155,7 +159,6 @@ const MenuEditor = () => {
   useEffect(() => {
     if (lastEditedItemRef.current && menuData) {
       const editingItem = lastEditedItemRef.current;
-      console.log('useEffect: Preserving expanded state for:', editingItem.name);
       
       // Check if the parent has changed (use editForm.parent if available, fallback to editingItem.parent)
       const currentParent = editingItem._editFormParent || editingItem.parent;
@@ -169,10 +172,8 @@ const MenuEditor = () => {
           const parentItem = menuData.menu.main.find(item => item.identifier === currentParentIdentifier);
           if (parentItem) {
             newExpanded.add(parentItem.identifier || parentItem.name);
-            console.log('useEffect: Added parent to expanded state:', parentItem.name);
             currentParentIdentifier = parentItem.parent;
           } else {
-            console.log('useEffect: Parent not found:', currentParentIdentifier);
             break;
           }
         }
@@ -180,20 +181,15 @@ const MenuEditor = () => {
         // Only add the current item's identifier if it was already expanded before
         if (editingItem.identifier && expandedItems.has(editingItem.identifier)) {
           newExpanded.add(editingItem.identifier);
-          console.log('useEffect: Preserved current item expanded state:', editingItem.identifier);
-        } else if (editingItem.identifier) {
-          console.log('useEffect: Current item was not expanded, not adding to expanded state:', editingItem.identifier);
         }
         
         // Add any existing expanded items that aren't already included
         expandedItems.forEach(item => {
           if (!newExpanded.has(item)) {
             newExpanded.add(item);
-            console.log('useEffect: Preserved existing expanded item:', item);
           }
         });
         
-        console.log('useEffect: Final expanded state:', Array.from(newExpanded));
         setExpandedItems(newExpanded);
         
         // Clear the ref after preserving state
@@ -273,8 +269,6 @@ const MenuEditor = () => {
 
       // Update temporary data via API
       try {
-        console.log(`Deleting item: ${itemToDelete.name}`);
-        
         const response = await fetch('/api/menu-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -283,7 +277,6 @@ const MenuEditor = () => {
 
         if (response.ok) {
           const result = await response.json();
-          console.log('Item deletion successful:', result.message);
           
           // Update local state
           setMenuData(updatedMenuData);
@@ -302,18 +295,15 @@ const MenuEditor = () => {
           }
         } else {
           const errorText = await response.text();
-          console.error(`API error ${response.status}:`, errorText);
           throw new Error(`Failed to delete item: ${response.status} ${response.statusText}`);
         }
       } catch (err) {
-        console.error('API update failed:', err);
         alert(`⚠️ Failed to delete item: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
         
         // Update local state even if API fails
         setMenuData(updatedMenuData);
       }
     } catch (err) {
-      console.error('Error deleting item:', err);
       alert(`Error deleting item: ${err.message}`);
     }
   };
@@ -466,8 +456,6 @@ const MenuEditor = () => {
 
       // Update temporary data via API
       try {
-        console.log(`Merging identical duplicates: deleting "${itemToDelete.name}" (UID: ${itemToDelete._uid})`);
-        
         const response = await fetch('/api/menu-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -476,100 +464,139 @@ const MenuEditor = () => {
 
         if (response.ok) {
           const result = await response.json();
-          console.log('Merge successful:', result.message);
-          
           // Update local state
           setMenuData(updatedMenuData);
         } else {
           const errorText = await response.text();
-          console.error(`API error ${response.status}:`, errorText);
           throw new Error(`Failed to merge: ${response.status} ${response.statusText}`);
         }
       } catch (err) {
-        console.error('API update failed:', err);
         alert(`⚠️ Failed to merge: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
         
         // Update local state even if API fails
         setMenuData(updatedMenuData);
       }
     } catch (err) {
-      console.error('Error merging duplicates:', err);
       alert(`Error merging duplicates: ${err.message}`);
     }
   };
 
+  // Load menu data from API or use sample data
   const loadMenuData = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Try to fetch from API, fallback to sample data
-      try {
-        const response = await fetch('/api/menu-data');
-        if (response.ok) {
-          const data = await response.json();
-          // Add UIDs to all items
+    // Don't automatically load data - wait for user to upload a file
+  };
+
+  // Handle file upload for new file (resets application state)
+  const handleNewFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && (file.name.endsWith('.yaml') || file.name.endsWith('.yml'))) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const yamlContent = e.target.result;
+          const data = yaml.load(yamlContent);
+          
+          // Check if the data has the expected structure
+          if (!data || typeof data !== 'object' || !data.menu || !Array.isArray(data.menu.main)) {
+            alert('Invalid YAML file structure. Expected format: { menu: { main: [...] } }');
+            return;
+          }
+          
+          // Add UIDs to the menu items
+          const itemsWithUIDs = addUIDsToItems(data.menu.main);
+          
+          // Create the final data structure with UIDs
           const dataWithUIDs = {
             ...data,
             menu: {
               ...data.menu,
-              main: addUIDsToItems(data.menu.main)
+              main: itemsWithUIDs
             }
           };
+          
+          // Reset all application state
+          setEditingItem(null);
+          setEditForm({});
+          setResolvingDuplicates(null);
+          setDuplicateResolution(null);
+          setSearchTerm('');
+          setIsSaving(false);
+          setExpandedItems(new Set());
+          setShowAddModal(false);
+          setShowUploadNewModal(false);
+          
+          // Set new data
           setMenuData(dataWithUIDs);
-          return;
+          setOriginalMenuData(dataWithUIDs);
+          setUploadedFile(file);
+          
+          // Expand top-level items by default
+          const topLevelItems = dataWithUIDs.menu.main.filter(item => !item.parent);
+          const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
+          setExpandedItems(initialExpanded);
+          
+        } catch (err) {
+          alert('Error parsing YAML file. Please ensure it\'s a valid YAML file.');
         }
-      } catch (err) {
-        console.log('API not available, using sample data');
-      }
-      
-      // Sample data for demo
-      const sampleData = {
-        menu: {
-          main: [
-            {
-              name: "Essentials",
-              identifier: "essentials_heading",
-              weight: 1000000
-            },
-            {
-              name: "Getting Started",
-              identifier: "getting_started",
-              url: "getting_started/",
-              pre: "hex-ringed",
-              parent: "essentials_heading",
-              weight: 10000
-            },
-            {
-              name: "Platform",
-              identifier: "platform_heading",
-              weight: 2000000
-            },
-            {
-              name: "Dashboards",
-              identifier: "dashboards",
-              url: "dashboards/",
-              pre: "dashboard",
-              parent: "platform_heading",
-              weight: 10000
+      };
+      reader.readAsText(file);
+    } else {
+      alert('Please select a valid YAML file (.yaml or .yml)');
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && (file.name.endsWith('.yaml') || file.name.endsWith('.yml'))) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const yamlContent = e.target.result;
+          const data = yaml.load(yamlContent);
+          
+          // Check if the data has the expected structure
+          if (!data || typeof data !== 'object' || !data.menu || !Array.isArray(data.menu.main)) {
+            alert('Invalid YAML file structure. Expected format: { menu: { main: [...] } }');
+            return;
+          }
+          
+          // Add UIDs to the menu items
+          const itemsWithUIDs = addUIDsToItems(data.menu.main);
+          
+          // Create the final data structure with UIDs
+          const dataWithUIDs = {
+            ...data,
+            menu: {
+              ...data.menu,
+              main: itemsWithUIDs
             }
-          ]
+          };
+          
+          setMenuData(dataWithUIDs);
+          setOriginalMenuData(dataWithUIDs);
+          setUploadedFile(file);
+        } catch (err) {
+          alert('Error parsing YAML file. Please ensure it\'s a valid YAML file.');
         }
       };
-      
-      // Add UIDs to sample data
-      const sampleDataWithUIDs = {
-        ...sampleData,
-        menu: {
-          ...sampleData.menu,
-          main: addUIDsToItems(sampleData.menu.main)
-        }
-      };
-      
-      setMenuData(sampleDataWithUIDs);
-    } catch (err) {
-      console.error('Error loading menu data:', err);
-    } finally {
-      setIsLoading(false);
+      reader.readAsText(file);
+    } else {
+      alert('Please select a valid YAML file (.yaml or .yml)');
+    }
+  };
+
+  // Reset to uploaded file
+  const resetToUploadedFile = () => {
+    if (originalMenuData) {
+      setMenuData(originalMenuData);
+      setEditingItem(null);
+      setEditForm({});
+      setResolvingDuplicates(null);
+      setDuplicateResolution(null);
+      setSearchTerm('');
+      setIsSaving(false);
+      setExpandedItems(new Set());
     }
   };
 
@@ -580,27 +607,45 @@ const MenuEditor = () => {
     // Create a map of all items by UID (unique identifier)
     const itemMap = new Map();
     const rootItems = [];
+    const processedUIDs = new Set(); // Track processed items to prevent duplicates
     
     // First pass: create item objects with empty children arrays
     items.forEach(item => {
+      if (!item._uid) {
+        return;
+      }
+      
+      if (processedUIDs.has(item._uid)) {
+        return;
+      }
+      
       const itemWithChildren = { ...item, children: [] };
       itemMap.set(item._uid, itemWithChildren);
+      processedUIDs.add(item._uid);
     });
     
     // Second pass: build parent-child relationships
     items.forEach(item => {
+      if (!item._uid || !itemMap.has(item._uid)) return;
+      
       const currentItem = itemMap.get(item._uid);
       
       if (item.parent) {
-        // Find parent by identifier (since parent field uses identifier)
+        // Find parent by identifier, but use UID for the actual relationship
         const parentItem = items.find(p => p.identifier === item.parent);
-        if (parentItem && itemMap.has(parentItem._uid)) {
+        
+        if (parentItem && itemMap.has(parentItem._uid) && parentItem._uid !== item._uid) {
           // This item has a parent, add it to parent's children
           const parent = itemMap.get(parentItem._uid);
           if (!parent.children) parent.children = [];
-          parent.children.push(currentItem);
+          
+          // Check if this child is already added to prevent duplicates
+          const childExists = parent.children.some(child => child._uid === currentItem._uid);
+          if (!childExists) {
+            parent.children.push(currentItem);
+          }
         } else {
-          // Parent not found, treat as root item
+          // Parent not found or would create circular reference, treat as root item
           rootItems.push(currentItem);
         }
       } else {
@@ -611,6 +656,8 @@ const MenuEditor = () => {
     
     // Sort function to sort by weight
     const sortByWeight = (itemsToSort) => {
+      if (!itemsToSort || !Array.isArray(itemsToSort)) return;
+      
       itemsToSort.sort((a, b) => (a.weight || 0) - (b.weight || 0));
       
       // Recursively sort children
@@ -625,6 +672,20 @@ const MenuEditor = () => {
     sortByWeight(rootItems);
     
     return rootItems;
+  };
+  
+  // Helper function to count total items in hierarchy
+  const countItemsInHierarchy = (items) => {
+    if (!items || !Array.isArray(items)) return 0;
+    
+    let count = 0;
+    items.forEach(item => {
+      count++;
+      if (item.children && item.children.length > 0) {
+        count += countItemsInHierarchy(item.children);
+      }
+    });
+    return count;
   };
 
   // Start editing an item
@@ -680,8 +741,6 @@ const MenuEditor = () => {
 
       // Try to save to temporary memory via API
       try {
-        console.log(`Updating temporary menu data with ${updatedItems.length} items...`);
-        
         const response = await fetch('/api/menu-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -690,7 +749,6 @@ const MenuEditor = () => {
 
         if (response.ok) {
           const result = await response.json();
-          console.log('Temporary update successful:', result.message);
           
           // Set the ref so useEffect can preserve expanded state
           lastEditedItemRef.current = {
@@ -744,11 +802,9 @@ const MenuEditor = () => {
           }
         } else {
           const errorText = await response.text();
-          console.error(`API error ${response.status}:`, errorText);
           throw new Error(`Failed to update: ${response.status} ${response.statusText}`);
         }
       } catch (err) {
-        console.error('API update failed:', err);
         alert(`⚠️ Update failed: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
         
         // Update local state even if API fails
@@ -786,7 +842,6 @@ const MenuEditor = () => {
         }
       }
     } catch (err) {
-      console.error('Error updating item:', err);
       alert(`Error updating item: ${err.message}`);
     } finally {
       setIsSaving(false);
@@ -812,14 +867,11 @@ const MenuEditor = () => {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        console.log('YAML file downloaded successfully');
       } else {
         const errorText = await response.text();
-        console.error(`Download error ${response.status}:`, errorText);
         alert(`Download failed: ${response.status} ${response.statusText}`);
       }
     } catch (err) {
-      console.error('Error downloading YAML:', err);
       alert(`Download failed: ${err.message}`);
     }
   };
@@ -847,7 +899,6 @@ const MenuEditor = () => {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Reset successful:', result.message);
         
         // Reload fresh data from the original file
         await loadMenuData();
@@ -858,15 +909,11 @@ const MenuEditor = () => {
           const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
           setExpandedItems(initialExpanded);
         }
-        
-        console.log('Reset to original data completed');
       } else {
         const errorText = await response.text();
-        console.error(`Reset error ${response.status}:`, errorText);
         throw new Error(`Failed to reset: ${response.status} ${response.statusText}`);
       }
     } catch (err) {
-      console.error('Error resetting to original data:', err);
       alert(`Error resetting: ${err.message}`);
       
       // Fallback: try to reload data anyway and clear all state
@@ -888,7 +935,7 @@ const MenuEditor = () => {
           setExpandedItems(initialExpanded);
         }
       } catch (fallbackErr) {
-        console.error('Fallback reload also failed:', fallbackErr);
+        // Fallback reload failed silently
       }
     }
   };
@@ -1026,7 +1073,6 @@ const MenuEditor = () => {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Inline edit successful:', result.message);
         
         // Update local state
         setMenuData(updatedMenuData);
@@ -1040,11 +1086,9 @@ const MenuEditor = () => {
         
       } else {
         const errorText = await response.text();
-        console.error(`API error ${response.status}:`, errorText);
         throw new Error(`Failed to save: ${response.status} ${response.statusText}`);
       }
     } catch (err) {
-      console.error('Inline edit failed:', err);
       alert(`Error saving item: ${err.message}`);
     }
   };
@@ -1259,12 +1303,50 @@ const MenuEditor = () => {
   }
 
   if (!menuData) {
+    // File upload interface
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-red-600 text-xl mb-4">⚠️ Error</div>
-          <p className="text-gray-600 mb-4">Failed to load menu data</p>
-          <Button onClick={loadMenuData}>Retry</Button>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Menu Bestie</h1>
+              <p className="text-gray-600">Edit navigation menu configuration.</p>
+            </div>
+            <div className="text-sm text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
+              Upload a YAML file to get started
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Your Menu File</h2>
+              <p className="text-gray-600">Select a main.en.yaml file to get started</p>
+            </div>
+            <div className="mb-4">
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors">
+                  <div className="text-gray-600">
+                    <div className="text-lg font-medium mb-2">Choose a file</div>
+                    <div className="text-sm">or drag and drop</div>
+                    <div className="text-xs text-gray-500 mt-1">YAML files only</div>
+                  </div>
+                </div>
+              </label>
+              <input
+                id="file-upload"
+                type="file"
+                accept=".yaml,.yml"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+            <p className="text-sm text-gray-500">
+              Upload your main.en.yaml file to start editing your navigation menu
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -1327,564 +1409,612 @@ const MenuEditor = () => {
             })()}
           </div>
           <div className="flex items-center gap-3">
-            <Button 
-              onClick={downloadYaml}
-              className="bg-green-600 text-white border-green-600 hover:bg-green-700 hover:border-green-700"
-            >
-              📥 Download main.en.yaml
-            </Button>
-            <Button 
-              onClick={resetToOriginal}
-              variant="outline"
-              className="text-gray-700 border-gray-300 hover:bg-gray-50"
-            >
-              Reset to Original
-            </Button>
-            <div className="text-sm text-gray-500 bg-blue-50 px-3 py-2 rounded-md">
-              Changes are stored in memory only.
+            {menuData && (
+              <>
+                <Button 
+                  onClick={() => setShowUploadNewModal(true)}
+                  variant="outline"
+                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                >
+                  Upload New
+                </Button>
+                <Button 
+                  onClick={downloadYaml}
+                  className="bg-green-600 text-white border-green-600 hover:bg-green-700 hover:border-green-700"
+                >
+                  Download new main.en.yaml
+                </Button>
+                <Button 
+                  onClick={resetToUploadedFile}
+                  variant="outline"
+                  className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                >
+                  Reset changes
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main menu interface */}
+      <>
+        {/* Toolbar */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Input
+                placeholder="Search menu items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-64"
+              />
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Input
-              placeholder="Search menu items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64"
-            />
-          </div>
-          
-          {/* Expand/Collapse Controls */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={expandAll}>
-              Expand All
-            </Button>
-            <Button variant="outline" size="sm" onClick={collapseAll}>
-              Collapse All
+            
+            {/* Expand/Collapse Controls */}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={expandAll}>
+                Expand All
+              </Button>
+              <Button variant="outline" size="sm" onClick={collapseAll}>
+                Collapse All
+              </Button>
+            </div>
+            
+            {/* Item Count */}
+            <div className="text-sm text-gray-600">
+              Showing {getVisibleItemCount()} of {menuData?.menu?.main?.length || 0} items
+            </div>
+            
+            <Button onClick={() => setShowAddModal(true)}>
+              Add Item
             </Button>
           </div>
-          
-          {/* Item Count */}
-          <div className="text-sm text-gray-600">
-            Showing {getVisibleItemCount()} of {menuData?.menu?.main?.length || 0} items
-          </div>
-          
-          <Button onClick={() => setShowAddModal(true)}>
-            Add Top-Level Item
-          </Button>
         </div>
-      </div>
 
-      {/* Add Item Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-          <div className="relative p-8 border w-96 shadow-lg rounded-md bg-white">
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Menu Item</h3>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <Input
-                    value={addItemForm.name}
-                    onChange={(e) => setAddItemForm({...addItemForm, name: e.target.value})}
-                    placeholder="Item name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
-                  <Input
-                    value={addItemForm.identifier}
-                    onChange={(e) => setAddItemForm({...addItemForm, identifier: e.target.value})}
-                    placeholder="Unique identifier"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
-                  <Input
-                    value={addItemForm.url || ''}
-                    onChange={(e) => setAddItemForm({...addItemForm, url: e.target.value})}
-                    placeholder="URL path (optional)"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
-                  <Input
-                    value={addItemForm.pre || ''}
-                    onChange={(e) => setAddItemForm({...addItemForm, pre: e.target.value})}
-                    placeholder="Icon name (optional)"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
-                  <div className="relative">
+        {/* Add Item Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+            <div className="relative p-8 border w-96 shadow-lg rounded-md bg-white">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Menu Item</h3>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                     <Input
-                      value={addItemForm.parent || ''}
-                      onChange={(e) => handleParentInputChange(e.target.value, false)}
-                      onFocus={() => {
-                        if (addItemForm.parent) {
-                          const suggestions = generateParentSuggestions(addItemForm.parent);
-                          setParentSuggestions(suggestions);
-                          setShowParentSuggestions(suggestions.length > 0);
-                        }
-                      }}
-                      placeholder="Start typing to search for parent..."
-                      className="w-full"
+                      value={addItemForm.name}
+                      onChange={(e) => setAddItemForm({...addItemForm, name: e.target.value})}
+                      placeholder="Item name"
                     />
-                    {showParentSuggestions && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                        {parentSuggestions.map((suggestion, index) => (
-                          <div
-                            key={index}
-                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            onClick={() => selectParentSuggestion(suggestion, false)}
-                          >
-                            <div className="font-medium text-gray-900">{suggestion.displayName}</div>
-                            <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
-                  <Input
-                    type="number"
-                    value={addItemForm.weight}
-                    onChange={(e) => setAddItemForm({...addItemForm, weight: parseInt(e.target.value) || 0})}
-                    placeholder="Sort weight"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <Button onClick={addNewItem} disabled={isSaving}>
-                  {isSaving ? 'Adding...' : 'Add Item'}
-                </Button>
-                <Button variant="outline" onClick={() => setShowAddModal(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Items Without Identifiers Warning */}
-      {(() => {
-        const itemsWithoutIdentifiers = getItemsWithoutIdentifiers();
-        if (itemsWithoutIdentifiers.length > 0) {
-          return (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-800 mb-2">
-                    Items Without Identifiers Found ({itemsWithoutIdentifiers.length} items)
-                  </h3>
-                  <p className="text-yellow-700 mb-3">
-                    The following items are missing identifier fields, which may cause navigation issues:
-                  </p>
-                  <div className="space-y-2">
-                    {itemsWithoutIdentifiers.map((item, index) => (
-                      <div key={item._uid} className="bg-yellow-100 p-3 rounded border border-yellow-300">
-                        {inlineEditingItem && inlineEditingItem._uid === item._uid ? (
-                          // Inline edit form
-                          <div className="bg-white p-4 rounded border border-yellow-400">
-                            <div className="grid grid-cols-2 gap-3 mb-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                                <Input
-                                  value={inlineEditForm.name}
-                                  onChange={(e) => setInlineEditForm({...inlineEditForm, name: e.target.value})}
-                                  placeholder="Item name"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
-                                <Input
-                                  value={inlineEditForm.identifier}
-                                  onChange={(e) => setInlineEditForm({...inlineEditForm, identifier: e.target.value})}
-                                  placeholder="Unique identifier"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
-                                <Input
-                                  value={inlineEditForm.url || ''}
-                                  onChange={(e) => setInlineEditForm({...inlineEditForm, url: e.target.value})}
-                                  placeholder="URL path (optional)"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
-                                <Input
-                                  value={inlineEditForm.pre || ''}
-                                  onChange={(e) => setInlineEditForm({...inlineEditForm, pre: e.target.value})}
-                                  placeholder="Icon name (optional)"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
-                                <div className="relative">
-                                  <Input
-                                    value={inlineEditForm.parent || ''}
-                                    onChange={(e) => handleParentInputChange(e.target.value, true)}
-                                    onFocus={() => {
-                                      if (inlineEditForm.parent) {
-                                        const suggestions = generateParentSuggestions(inlineEditForm.parent);
-                                        setParentSuggestions(suggestions);
-                                        setShowParentSuggestions(suggestions.length > 0);
-                                      }
-                                    }}
-                                    placeholder="Start typing to search for parent..."
-                                    className="w-full"
-                                  />
-                                  {showParentSuggestions && (
-                                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                                      {parentSuggestions.map((suggestion, index) => (
-                                        <div
-                                          key={index}
-                                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                                          onClick={() => {
-                                            setInlineEditForm(prev => ({ ...prev, parent: suggestion.value }));
-                                            setShowParentSuggestions(false);
-                                            setParentSuggestions([]);
-                                          }}
-                                        >
-                                          <div className="font-medium text-gray-900">{suggestion.displayName}</div>
-                                          <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
-                                <Input
-                                  type="number"
-                                  value={inlineEditForm.weight}
-                                  onChange={(e) => setInlineEditForm({...inlineEditForm, weight: parseInt(e.target.value) || 0})}
-                                  placeholder="Sort weight"
-                                />
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button 
-                                onClick={saveInlineEditedItem} 
-                                className="bg-yellow-600 hover:bg-yellow-700"
-                                size="sm"
-                              >
-                                Save
-                              </Button>
-                              <Button variant="outline" onClick={cancelInlineEditing} size="sm">
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          // Display mode
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="font-medium text-yellow-800">
-                                {item.name}
-                              </div>
-                              <div className="text-sm text-yellow-700 mt-1">
-                                {item.url && <span className="mr-3">URL: {item.url}</span>}
-                                {item.weight && <span className="mr-3">Weight: {item.weight}</span>}
-                                {item.parent && <span>Parent: {item.parent}</span>}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => startInlineEditing(item)}
-                                className="text-xs bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700 hover:border-yellow-700"
-                              >
-                                Edit
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
+                    <Input
+                      value={addItemForm.identifier}
+                      onChange={(e) => setAddItemForm({...addItemForm, identifier: e.target.value})}
+                      placeholder="Unique identifier"
+                    />
                   </div>
-                  <p className="text-yellow-600 text-sm mt-3">
-                    Each item should have a unique <code>identifier</code> field for proper navigation.
-                    <br />
-                    Click "Edit" on any item above to add an identifier.
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Duplicate Identifier Warning - Separate Box */}
-      {(() => {
-        const duplicates = getDuplicateIdentifiers();
-        if (duplicates.length > 0) {
-          return (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-red-800 mb-2">
-                    Duplicate Identifiers Found ({duplicates.length} unique duplicates)
-                  </h3>
-                  <p className="text-red-700 mb-3">
-                    The following identifiers are used multiple times, which may cause navigation issues:
-                  </p>
-                  <div className="space-y-2">
-                    {duplicates.map((dup, index) => (
-                      <div key={index} className="bg-red-100 p-3 rounded border border-red-300">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-medium text-red-800">
-                              "{dup.identifier}" used {dup.count} times
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                    <Input
+                      value={addItemForm.url || ''}
+                      onChange={(e) => setAddItemForm({...addItemForm, url: e.target.value})}
+                      placeholder="URL path (optional)"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                    <Input
+                      value={addItemForm.pre || ''}
+                      onChange={(e) => setAddItemForm({...addItemForm, pre: e.target.value})}
+                      placeholder="Icon name (optional)"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                    <div className="relative">
+                      <Input
+                        value={addItemForm.parent || ''}
+                        onChange={(e) => handleParentInputChange(e.target.value, false)}
+                        onFocus={() => {
+                          if (addItemForm.parent) {
+                            const suggestions = generateParentSuggestions(addItemForm.parent);
+                            setParentSuggestions(suggestions);
+                            setShowParentSuggestions(suggestions.length > 0);
+                          }
+                        }}
+                        placeholder="Start typing to search for parent..."
+                        className="w-full"
+                      />
+                      {showParentSuggestions && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                          {parentSuggestions.map((suggestion, index) => (
+                            <div
+                              key={index}
+                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectParentSuggestion(suggestion, false)}
+                            >
+                              <div className="font-medium text-gray-900">{suggestion.displayName}</div>
+                              <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
                             </div>
-                            <div className="text-sm text-red-700 mt-1">
-                             
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {dup.areIdentical ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => mergeIdenticalDuplicates(dup)}
-                                className="bg-red-600 text-white border-green-600 hover:bg-red-700 hover:border-green-700"
-                              >
-                                Merge
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => startResolvingDuplicates(dup)}
-                                className="ml-3 bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-green-700"
-                              >
-                                Resolve
-                              </Button>
-                            )}
-                          </div>
+                          ))}
                         </div>
-                        
-                        {/* Expanded resolution interface */}
-                        {resolvingDuplicates && resolvingDuplicates.identifier === dup.identifier && duplicateResolution && (
-                          <div className="mt-4 p-4 bg-white rounded border border-red-200">
-                            <div className="mb-4">
-                              <h4 className="font-semibold text-red-800 mb-2">
-                                Duplicate Items Comparison
-                              </h4>
-                              <p className="text-red-700 text-sm">
-                                Review the differences and edit or delete items as needed.
-                              </p>
-                            </div>
-                            
-                            {/* Individual Item Actions */}
-                            <div className="space-y-3">
-                              {duplicateResolution.items.map((item, itemIndex) => (
-                                <div 
-                                  key={item._uid} 
-                                  className="p-3 rounded-lg border border-gray-200 bg-gray-50"
-                                >
-                                  {/* Show edit form if this item is being edited */}
-                                  {editingItem && editingItem._uid === item._uid ? (
-                                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                                          <Input
-                                            value={editForm.name}
-                                            onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                                            placeholder="Item name"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
-                                          <Input
-                                            value={editForm.identifier}
-                                            onChange={(e) => setEditForm({...editForm, identifier: e.target.value})}
-                                            placeholder="Unique identifier"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
-                                          <Input
-                                            value={editForm.url || ''}
-                                            onChange={(e) => setEditForm({...editForm, url: e.target.value})}
-                                            placeholder="URL path (optional)"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
-                                          <Input
-                                            value={editForm.pre || ''}
-                                            onChange={(e) => setEditForm({...editForm, pre: e.target.value})}
-                                            placeholder="Icon name (optional)"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
-                                          <select
-                                            value={editForm.parent || ''}
-                                            onChange={(e) => setEditForm({...editForm, parent: e.target.value})}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                          >
-                                            <option value="">No parent (top level)</option>
-                                            {getParentOptions().map(option => (
-                                              <option key={option.value} value={option.value}>
-                                                {option.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                        <div>
-                                          <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
-                                          <Input
-                                            type="number"
-                                            value={editForm.weight}
-                                            onChange={(e) => setEditForm({...editForm, weight: parseInt(e.target.value) || 0})}
-                                            placeholder="Sort weight"
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-2 mt-3">
-                                        <Button 
-                                          onClick={saveEditedItem} 
-                                          disabled={isSaving}
-                                          className="bg-blue-600 hover:bg-blue-700"
-                                          size="sm"
-                                        >
-                                          {isSaving ? 'Saving...' : 'Save'}
-                                        </Button>
-                                        <Button variant="outline" onClick={cancelEditing} size="sm">
-                                          Cancel
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    /* Show normal item display if not editing */
-                                    <>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <div className="font-medium text-gray-900">
-                                          Item {itemIndex + 1}: {item.name}
-                                        </div>
-                                        <div className="flex gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => startEditing(item)}
-                                            className="text-xs bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700"
-                                          >
-                                            Edit
-                                          </Button>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => deleteItem(item)}
-                                            className="text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
-                                          >
-                                            Delete
-                                          </Button>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="text-sm text-gray-600 space-y-1">
-                                        {(() => {
-                                          if (duplicateResolution.items.length === 2) {
-                                            const otherItem = duplicateResolution.items[1 - itemIndex];
-                                            const diff = generateDiff(item, otherItem);
-                                            
-                                            return Object.entries(diff).map(([field, values]) => (
-                                              <div 
-                                                key={field}
-                                                className={`p-2 rounded ${
-                                                  values.changed 
-                                                    ? 'bg-red-50 border border-red-200 text-red-800' 
-                                                    : 'bg-gray-100'
-                                                }`}
-                                              >
-                                                <span className="font-medium">{field}:</span> {values.item1 || '(empty)'}
-                                                {values.changed && (
-                                                  <span className="ml-2 text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
-                                                    differs from Item {2 - itemIndex}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            ));
-                                          } else {
-                                            // Fallback for more than 2 items
-                                            return (
-                                              <>
-                                                <div><span className="font-medium">Identifier:</span> {item.identifier}</div>
-                                                {item.url && <div><span className="font-medium">URL:</span> {item.url}</div>}
-                                                {item.weight && <div><span className="font-medium">Weight:</span> {item.weight}</div>}
-                                                {item.parent && <div><span className="font-medium">Parent:</span> {item.parent}</div>}
-                                              </>
-                                            );
-                                          }
-                                        })()}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                            
-                            <div className="flex gap-3 mt-4">
-                              <Button 
-                                variant="outline" 
-                                onClick={cancelDuplicateResolution}
-                                size="sm"
-                              >
-                                Close
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
-                  <p className="text-red-600 text-sm mt-3">
-                    Each item should have a unique <code>identifier</code> field.
-                    <br />
-                    If two items have completely identical content, you can merge them to keep one and delete the other.
-                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                    <Input
+                      type="number"
+                      value={addItemForm.weight}
+                      onChange={(e) => setAddItemForm({...addItemForm, weight: parseInt(e.target.value) || 0})}
+                      placeholder="Sort weight"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button onClick={addNewItem} disabled={isSaving}>
+                    {isSaving ? 'Adding...' : 'Add Item'}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
             </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Remove the separate blue resolution dialog */}
-
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Menu Structure</h2>
-        
-        {filteredItems.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            {searchTerm ? 'No items match your search criteria.' : 'No menu items found.'}
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {filteredItems.map((item) => (
-              <div key={item.identifier || item.name} data-item-id={item.identifier || item.name}>
-                {renderMenuItem(item)}
-              </div>
-            ))}
           </div>
         )}
-      </div>
+
+        {/* Upload New Modal */}
+        {showUploadNewModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+            <div className="relative p-8 border w-96 shadow-lg rounded-md bg-white">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Menu File</h3>
+                <p className="text-gray-600 mb-4">
+                  This will replace the current menu with a new file. All unsaved changes will be lost.
+                </p>
+                <div className="mb-4">
+                  <label htmlFor="upload-new-file" className="cursor-pointer">
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
+                      <div className="text-gray-600">
+                        <div className="text-lg font-medium mb-2">Choose a new file</div>
+                        <div className="text-sm">or drag and drop</div>
+                        <div className="text-xs text-gray-500 mt-1">YAML files only</div>
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    id="upload-new-file"
+                    type="file"
+                    accept=".yaml,.yml"
+                    onChange={handleNewFileUpload}
+                    className="hidden"
+                  />
+                </div>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" onClick={() => setShowUploadNewModal(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Items Without Identifiers Warning */}
+        {(() => {
+          const itemsWithoutIdentifiers = getItemsWithoutIdentifiers();
+          if (itemsWithoutIdentifiers.length > 0) {
+            return (
+              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-yellow-800 mb-2">
+                      Items Without Identifiers Found ({itemsWithoutIdentifiers.length} items)
+                    </h3>
+                    <p className="text-yellow-700 mb-3">
+                      The following items are missing identifier fields, which may cause navigation issues:
+                    </p>
+                    <div className="space-y-2">
+                      {itemsWithoutIdentifiers.map((item, index) => (
+                        <div key={item._uid} className="bg-yellow-100 p-3 rounded border border-yellow-300">
+                          {inlineEditingItem && inlineEditingItem._uid === item._uid ? (
+                            // Inline edit form
+                            <div className="bg-white p-4 rounded border border-yellow-400">
+                              <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                  <Input
+                                    value={inlineEditForm.name}
+                                    onChange={(e) => setInlineEditForm({...inlineEditForm, name: e.target.value})}
+                                    placeholder="Item name"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
+                                  <Input
+                                    value={inlineEditForm.identifier}
+                                    onChange={(e) => setInlineEditForm({...inlineEditForm, identifier: e.target.value})}
+                                    placeholder="Unique identifier"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                                  <Input
+                                    value={inlineEditForm.url || ''}
+                                    onChange={(e) => setInlineEditForm({...inlineEditForm, url: e.target.value})}
+                                    placeholder="URL path (optional)"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                                  <Input
+                                    value={inlineEditForm.pre || ''}
+                                    onChange={(e) => setInlineEditForm({...inlineEditForm, pre: e.target.value})}
+                                    placeholder="Icon name (optional)"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                                  <div className="relative">
+                                    <Input
+                                      value={inlineEditForm.parent || ''}
+                                      onChange={(e) => handleParentInputChange(e.target.value, true)}
+                                      onFocus={() => {
+                                        if (inlineEditForm.parent) {
+                                          const suggestions = generateParentSuggestions(inlineEditForm.parent);
+                                          setParentSuggestions(suggestions);
+                                          setShowParentSuggestions(suggestions.length > 0);
+                                        }
+                                      }}
+                                      placeholder="Start typing to search for parent..."
+                                      className="w-full"
+                                    />
+                                    {showParentSuggestions && (
+                                      <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                                        {parentSuggestions.map((suggestion, index) => (
+                                          <div
+                                            key={index}
+                                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                            onClick={() => {
+                                              setInlineEditForm(prev => ({ ...prev, parent: suggestion.value }));
+                                              setShowParentSuggestions(false);
+                                              setParentSuggestions([]);
+                                            }}
+                                          >
+                                            <div className="font-medium text-gray-900">{suggestion.displayName}</div>
+                                            <div className="text-sm text-gray-500">{suggestion.identifier || 'no-id'}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                                  <Input
+                                    type="number"
+                                    value={inlineEditForm.weight}
+                                    onChange={(e) => setInlineEditForm({...inlineEditForm, weight: parseInt(e.target.value) || 0})}
+                                    placeholder="Sort weight"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button 
+                                  onClick={saveInlineEditedItem} 
+                                  className="bg-yellow-600 hover:bg-yellow-700"
+                                  size="sm"
+                                >
+                                  Save
+                                </Button>
+                                <Button variant="outline" onClick={cancelInlineEditing} size="sm">
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Display mode
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="font-medium text-yellow-800">
+                                  {item.name}
+                                </div>
+                                <div className="text-sm text-yellow-700 mt-1">
+                                  {item.url && <span className="mr-3">URL: {item.url}</span>}
+                                  {item.weight && <span className="mr-3">Weight: {item.weight}</span>}
+                                  {item.parent && <span>Parent: {item.parent}</span>}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startInlineEditing(item)}
+                                  className="text-xs bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700 hover:border-yellow-700"
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-yellow-600 text-sm mt-3">
+                      Each item should have a unique <code>identifier</code> field for proper navigation.
+                      <br />
+                      Click "Edit" on any item above to add an identifier.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Duplicate Identifier Warning - Separate Box */}
+        {(() => {
+          const duplicates = getDuplicateIdentifiers();
+          if (duplicates.length > 0) {
+            return (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-red-800 mb-2">
+                      Duplicate Identifiers Found ({duplicates.length} unique duplicates)
+                    </h3>
+                    <p className="text-red-700 mb-3">
+                      The following identifiers are used multiple times, which may cause navigation issues:
+                    </p>
+                    <div className="space-y-2">
+                      {duplicates.map((dup, index) => (
+                        <div key={index} className="bg-red-100 p-3 rounded border border-red-300">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium text-red-800">
+                                "{dup.identifier}" used {dup.count} times
+                              </div>
+                              <div className="text-sm text-red-700 mt-1">
+                               
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              {dup.areIdentical ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => mergeIdenticalDuplicates(dup)}
+                                  className="bg-red-600 text-white border-green-600 hover:bg-red-700 hover:border-green-700"
+                                >
+                                  Merge
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startResolvingDuplicates(dup)}
+                                  className="ml-3 bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-green-700"
+                                >
+                                  Resolve
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Expanded resolution interface */}
+                          {resolvingDuplicates && resolvingDuplicates.identifier === dup.identifier && duplicateResolution && (
+                            <div className="mt-4 p-4 bg-white rounded border border-red-200">
+                              <div className="mb-4">
+                                <h4 className="font-semibold text-red-800 mb-2">
+                                  Duplicate Items Comparison
+                                </h4>
+                                <p className="text-red-700 text-sm">
+                                  Review the differences and edit or delete items as needed.
+                                </p>
+                              </div>
+                              
+                              {/* Individual Item Actions */}
+                              <div className="space-y-3">
+                                {duplicateResolution.items.map((item, itemIndex) => (
+                                  <div 
+                                    key={item._uid} 
+                                    className="p-3 rounded-lg border border-gray-200 bg-gray-50"
+                                  >
+                                    {/* Show edit form if this item is being edited */}
+                                    {editingItem && editingItem._uid === item._uid ? (
+                                      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                            <Input
+                                              value={editForm.name}
+                                              onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                                              placeholder="Item name"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Identifier</label>
+                                            <Input
+                                              value={editForm.identifier}
+                                              onChange={(e) => setEditForm({...editForm, identifier: e.target.value})}
+                                              placeholder="Unique identifier"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                                            <Input
+                                              value={editForm.url || ''}
+                                              onChange={(e) => setEditForm({...editForm, url: e.target.value})}
+                                              placeholder="URL path (optional)"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                                            <Input
+                                              value={editForm.pre || ''}
+                                              onChange={(e) => setEditForm({...editForm, pre: e.target.value})}
+                                              placeholder="Icon name (optional)"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                                            <select
+                                              value={editForm.parent || ''}
+                                              onChange={(e) => setEditForm({...editForm, parent: e.target.value})}
+                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                              <option value="">No parent (top level)</option>
+                                              {getParentOptions().map(option => (
+                                                <option key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                                            <Input
+                                              type="number"
+                                              value={editForm.weight}
+                                              onChange={(e) => setEditForm({...editForm, weight: parseInt(e.target.value) || 0})}
+                                              placeholder="Sort weight"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="flex gap-2 mt-3">
+                                          <Button 
+                                            onClick={saveEditedItem} 
+                                            disabled={isSaving}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                            size="sm"
+                                          >
+                                            {isSaving ? 'Saving...' : 'Save'}
+                                          </Button>
+                                          <Button variant="outline" onClick={cancelEditing} size="sm">
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      /* Show normal item display if not editing */
+                                      <>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="font-medium text-gray-900">
+                                            Item {itemIndex + 1}: {item.name}
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => startEditing(item)}
+                                              className="text-xs bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700"
+                                            >
+                                              Edit
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => deleteItem(item)}
+                                              className="text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
+                                            >
+                                              Delete
+                                            </Button>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="text-sm text-gray-600 space-y-1">
+                                          {(() => {
+                                            if (duplicateResolution.items.length === 2) {
+                                              const otherItem = duplicateResolution.items[1 - itemIndex];
+                                              const diff = generateDiff(item, otherItem);
+                                              
+                                              return Object.entries(diff).map(([field, values]) => (
+                                                <div 
+                                                  key={field}
+                                                  className={`p-2 rounded ${
+                                                    values.changed 
+                                                      ? 'bg-red-50 border border-red-200 text-red-800' 
+                                                      : 'bg-gray-100'
+                                                  }`}
+                                                >
+                                                  <span className="font-medium">{field}:</span> {values.item1 || '(empty)'}
+                                                  {values.changed && (
+                                                    <span className="ml-2 text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                                                      differs from Item {2 - itemIndex}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ));
+                                            } else {
+                                              // Fallback for more than 2 items
+                                              return (
+                                                <>
+                                                  <div><span className="font-medium">Identifier:</span> {item.identifier}</div>
+                                                  {item.url && <div><span className="font-medium">URL:</span> {item.url}</div>}
+                                                  {item.weight && <div><span className="font-medium">Weight:</span> {item.weight}</div>}
+                                                  {item.parent && <div><span className="font-medium">Parent:</span> {item.parent}</div>}
+                                                </>
+                                              );
+                                            }
+                                          })()}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              
+                              <div className="flex gap-3 mt-4">
+                                <Button 
+                                  variant="outline" 
+                                  onClick={cancelDuplicateResolution}
+                                  size="sm"
+                                >
+                                  Close
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-red-600 text-sm mt-3">
+                      Each item should have a unique <code>identifier</code> field.
+                      <br />
+                      If two items have completely identical content, you can merge them to keep one and delete the other.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Remove the separate blue resolution dialog */}
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Menu Structure</h2>
+          
+          {filteredItems.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              {searchTerm ? 'No items match your search criteria.' : 'No menu items found.'}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filteredItems.map((item) => (
+                <div key={item.identifier || item.name} data-item-id={item.identifier || item.name}>
+                  {renderMenuItem(item)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
     </div>
   );
 };

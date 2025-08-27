@@ -41,26 +41,21 @@ const addUIDsToItems = (items) => {
 // API Routes
 app.get('/api/menu-data', async (req, res) => {
   try {
-    const yamlPath = path.join(__dirname, 'main.en.yaml');
-    const yamlContent = await fs.readFile(yamlPath, 'utf8');
-    const menuData = yaml.load(yamlContent);
-    
-    // Initialize temporary data if not set
-    if (!temporaryMenuData) {
-      // Add UIDs to all items when first loading
-      temporaryMenuData = {
-        ...menuData,
-        menu: {
-          ...menuData.menu,
-          main: addUIDsToItems(menuData.menu.main)
-        }
-      };
+    // If we have temporary data, return it
+    if (temporaryMenuData) {
+      res.json(temporaryMenuData);
+      return;
     }
     
-    res.json(temporaryMenuData);
+    // Otherwise, return empty data structure
+    res.json({
+      menu: {
+        main: []
+      }
+    });
   } catch (error) {
-    console.error('Error reading YAML file:', error);
-    res.status(500).json({ error: 'Failed to read menu data' });
+    console.error('Error handling menu data request:', error);
+    res.status(500).json({ error: 'Failed to handle menu data request' });
   }
 });
 
