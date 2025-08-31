@@ -93,16 +93,8 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Update via API
-      const response = await fetch('/api/menu-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMenuData)
-      });
-
-      if (response.ok) {
-        // Update local state
-        setMenuData(updatedMenuData);
+      // Update local state directly (no server needed)
+      setMenuData(updatedMenuData);
         
         // Expand parent if specified
         if (newItem.parent) {
@@ -145,14 +137,20 @@ const MenuEditor = () => {
           weight: 0
         });
         
-
-      } else {
-        const errorText = await response.text();
-        throw new Error(`Failed to add item: ${response.status} ${response.statusText}`);
+        // Add visual feedback for the new item
+        addEditFeedback(newItem);
+        
+        // Scroll to the new item's position
+        setTimeout(() => {
+          const newItemElement = document.querySelector(`[data-item-id="${newItem.identifier}"]`);
+          if (newItemElement) {
+            newItemElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+        
+      } catch (err) {
+        alert(`Error adding item: ${err.message}`);
       }
-    } catch (err) {
-      alert(`Error adding item: ${err.message}`);
-    }
   };
 
   // Preserve expanded state when menu data changes
@@ -198,10 +196,7 @@ const MenuEditor = () => {
     }
   }, [menuData]); // Removed expandedItems dependency to prevent infinite loop
 
-  // Load menu data on component mount
-  useEffect(() => {
-    loadMenuData();
-  }, []);
+  // No need to load data on mount - wait for user to upload a file
 
   // Initialize expanded state when menu data is loaded (only on initial load)
   useEffect(() => {
@@ -267,41 +262,20 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Update temporary data via API
-      try {
-        const response = await fetch('/api/menu-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedMenuData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          
-          // Update local state
-          setMenuData(updatedMenuData);
-          
-          // If we were resolving duplicates, check if this resolves the issue
-          if (resolvingDuplicates && duplicateResolution) {
-            const remainingDuplicates = updatedItems.filter(item => 
-              item.identifier === duplicateResolution.identifier
-            );
-            
-            if (remainingDuplicates.length <= 1) {
-              // Duplicate resolved, close the resolution interface
-              setResolvingDuplicates(null);
-              setDuplicateResolution(null);
-            }
-          }
-        } else {
-          const errorText = await response.text();
-          throw new Error(`Failed to delete item: ${response.status} ${response.statusText}`);
-        }
-      } catch (err) {
-        alert(`⚠️ Failed to delete item: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
+      // Update local state directly (no server needed)
+      setMenuData(updatedMenuData);
+      
+      // If we were resolving duplicates, check if this resolves the issue
+      if (resolvingDuplicates && duplicateResolution) {
+        const remainingDuplicates = updatedItems.filter(item => 
+          item.identifier === duplicateResolution.identifier
+        );
         
-        // Update local state even if API fails
-        setMenuData(updatedMenuData);
+        if (remainingDuplicates.length <= 1) {
+          // Duplicate resolved, close the resolution interface
+          setResolvingDuplicates(null);
+          setDuplicateResolution(null);
+        }
       }
     } catch (err) {
       alert(`Error deleting item: ${err.message}`);
@@ -454,28 +428,8 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Update temporary data via API
-      try {
-        const response = await fetch('/api/menu-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedMenuData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          // Update local state
-          setMenuData(updatedMenuData);
-        } else {
-          const errorText = await response.text();
-          throw new Error(`Failed to merge: ${response.status} ${response.statusText}`);
-        }
-      } catch (err) {
-        alert(`⚠️ Failed to merge: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
-        
-        // Update local state even if API fails
-        setMenuData(updatedMenuData);
-      }
+      // Update local state directly (no server needed)
+      setMenuData(updatedMenuData);
     } catch (err) {
       alert(`Error merging duplicates: ${err.message}`);
     }
@@ -739,106 +693,54 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Try to save to temporary memory via API
-      try {
-        const response = await fetch('/api/menu-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedMenuData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          
-          // Set the ref so useEffect can preserve expanded state
-          lastEditedItemRef.current = {
-            ...editingItem,
-            _editFormParent: editForm.parent // Store the new parent value
-          };
-          
-          // Add visual feedback for the edited item
-          addEditFeedback(editingItem);
-          
-          // Scroll to the parent of the edited item if it has one
-          if (editForm.parent) {
-            // Ensure parent is expanded before scrolling
-            const newExpanded = new Set(expandedItems);
-            newExpanded.add(editForm.parent);
-            setExpandedItems(newExpanded);
-            
-            setTimeout(() => {
-              const parentElement = document.querySelector(`[data-item-id="${editForm.parent}"]`);
-              if (parentElement) {
-                parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }, 100);
+      // Update local state directly (no server needed)
+      setMenuData(updatedMenuData);
+      
+      // Set the ref so useEffect can preserve expanded state
+      lastEditedItemRef.current = {
+        ...editingItem,
+        _editFormParent: editForm.parent // Store the new parent value
+      };
+      
+      // Add visual feedback for the edited item
+      addEditFeedback(editingItem);
+      
+      // Scroll to the parent of the edited item if it has one
+      if (editForm.parent) {
+        // Ensure parent is expanded before scrolling
+        const newExpanded = new Set(expandedItems);
+        newExpanded.add(editForm.parent);
+        setExpandedItems(newExpanded);
+        
+        setTimeout(() => {
+          const parentElement = document.querySelector(`[data-item-id="${editForm.parent}"]`);
+          if (parentElement) {
+            parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
-          
-          // Update local state
-          setMenuData(updatedMenuData);
-          
-          // Clear editing state
-          setEditingItem(null);
-          setEditForm({});
-          
-          // If we were resolving duplicates, refresh the duplicate data
-          if (resolvingDuplicates && duplicateResolution) {
-            // Check if the duplicate is still valid after the edit
-            const remainingDuplicates = updatedItems.filter(item => 
-              item.identifier === duplicateResolution.identifier
-            );
-            
-            if (remainingDuplicates.length <= 1) {
-              // Duplicate resolved, close the resolution interface
-              setResolvingDuplicates(null);
-              setDuplicateResolution(null);
-            } else {
-              // Update the duplicate resolution data with the new item data
-              setDuplicateResolution({
-                identifier: duplicateResolution.identifier,
-                items: remainingDuplicates
-              });
-            }
-          }
+        }, 100);
+      }
+      
+      // Clear editing state
+      setEditingItem(null);
+      setEditForm({});
+      
+      // If we were resolving duplicates, refresh the duplicate data
+      if (resolvingDuplicates && duplicateResolution) {
+        // Check if the duplicate is still valid after the edit
+        const remainingDuplicates = updatedItems.filter(item => 
+          item.identifier === duplicateResolution.identifier
+        );
+        
+        if (remainingDuplicates.length <= 1) {
+          // Duplicate resolved, close the resolution interface
+          setResolvingDuplicates(null);
+          setDuplicateResolution(null);
         } else {
-          const errorText = await response.text();
-          throw new Error(`Failed to update: ${response.status} ${response.statusText}`);
-        }
-      } catch (err) {
-        alert(`⚠️ Update failed: ${err.message}. Changes have been applied locally but not saved to temporary storage.`);
-        
-        // Update local state even if API fails
-        setMenuData(updatedMenuData);
-        
-        // Set the ref so useEffect can preserve expanded state
-        lastEditedItemRef.current = {
-          ...editingItem,
-          _editFormParent: editForm.parent // Store the new parent value
-        };
-        
-        // Add visual feedback for the edited item
-        addEditFeedback(editingItem);
-        
-        // Clear editing state
-        setEditingItem(null);
-        setEditForm({});
-        lastEditedItemRef.current = null; // Clear the ref
-        
-        // Refresh duplicate data if needed
-        if (resolvingDuplicates && duplicateResolution) {
-          const remainingDuplicates = updatedItems.filter(item => 
-            item.identifier === duplicateResolution.identifier
-          );
-          
-          if (remainingDuplicates.length <= 1) {
-            setResolvingDuplicates(null);
-            setDuplicateResolution(null);
-          } else {
-            setDuplicateResolution({
-              identifier: duplicateResolution.identifier,
-              items: remainingDuplicates
-            });
-          }
+          // Update the duplicate resolution data with the new item data
+          setDuplicateResolution({
+            identifier: duplicateResolution.identifier,
+            items: remainingDuplicates
+          });
         }
       }
     } catch (err) {
@@ -851,26 +753,52 @@ const MenuEditor = () => {
   // Download the modified YAML file
   const downloadYaml = async () => {
     try {
-      const response = await fetch('/api/download-yaml');
-      
-      if (response.ok) {
-        const yamlContent = await response.text();
-        
-        // Create a blob and download link
-        const blob = new Blob([yamlContent], { type: 'text/yaml' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'main.en.yaml';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-      } else {
-        const errorText = await response.text();
-        alert(`Download failed: ${response.status} ${response.statusText}`);
+      if (!menuData) {
+        alert('No menu data available to download');
+        return;
       }
+
+      // Strip UIDs from the data before converting to YAML (same logic as server)
+      const stripUIDsFromItems = (items) => {
+        if (!items || !Array.isArray(items)) return items;
+        return items.map(item => {
+          const { _uid, ...itemWithoutUID } = item;
+          if (item.children && item.children.length > 0) {
+            itemWithoutUID.children = stripUIDsFromItems(item.children);
+          }
+          return itemWithoutUID;
+        });
+      };
+
+      const dataWithoutUIDs = {
+        ...menuData,
+        menu: {
+          ...menuData.menu,
+          main: stripUIDsFromItems(menuData.menu.main)
+        }
+      };
+
+      // Generate YAML content using js-yaml
+      const yamlContent = yaml.dump(dataWithoutUIDs, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false,
+        defaultStringType: 'PLAIN'
+      });
+      
+      // Create a blob and download link
+      const blob = new Blob([yamlContent], { type: 'text/yaml' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'main.en.yaml';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
     } catch (err) {
       alert(`Download failed: ${err.message}`);
     }
@@ -891,52 +819,19 @@ const MenuEditor = () => {
       setSearchTerm(''); // Clear search term
       setIsSaving(false); // Clear saving state
       
-      // Call the reset API endpoint
-      const response = await fetch('/api/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Reload fresh data from the original file
-        await loadMenuData();
+      // Reset to original uploaded file data (no server needed)
+      if (originalMenuData) {
+        setMenuData(originalMenuData);
         
         // Reset expanded state to default (top-level items only)
-        if (menuData && menuData.menu && menuData.menu.main) {
-          const topLevelItems = menuData.menu.main.filter(item => !item.parent);
-          const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
-          setExpandedItems(initialExpanded);
-        }
+        const topLevelItems = originalMenuData.menu.main.filter(item => !item.parent);
+        const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
+        setExpandedItems(initialExpanded);
       } else {
-        const errorText = await response.text();
-        throw new Error(`Failed to reset: ${response.status} ${response.statusText}`);
+        alert('No original data available to reset to. Please upload a file first.');
       }
     } catch (err) {
       alert(`Error resetting: ${err.message}`);
-      
-      // Fallback: try to reload data anyway and clear all state
-      try {
-        await loadMenuData();
-        
-        // Clear all state even if API fails
-        setEditingItem(null);
-        setEditForm({});
-        setResolvingDuplicates(null);
-        setDuplicateResolution(null);
-        setSearchTerm('');
-        setIsSaving(false);
-        
-        // Reset expanded state
-        if (menuData && menuData.menu && menuData.menu.main) {
-          const topLevelItems = menuData.menu.main.filter(item => !item.parent);
-          const initialExpanded = new Set(topLevelItems.map(item => item.identifier || item.name));
-          setExpandedItems(initialExpanded);
-        }
-      } catch (fallbackErr) {
-        // Fallback reload failed silently
-      }
     }
   };
 
@@ -1064,30 +959,15 @@ const MenuEditor = () => {
         menu: { ...menuData.menu, main: updatedItems }
       };
 
-      // Update via API
-      const response = await fetch('/api/menu-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMenuData)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Update local state
-        setMenuData(updatedMenuData);
-        
-        // Clear inline editing state
-        setInlineEditingItem(null);
-        setInlineEditForm({});
-        
-        // Add visual feedback for the edited item
-        addEditFeedback(inlineEditingItem);
-        
-      } else {
-        const errorText = await response.text();
-        throw new Error(`Failed to save: ${response.status} ${response.statusText}`);
-      }
+      // Update local state directly (no server needed)
+      setMenuData(updatedMenuData);
+      
+      // Clear inline editing state
+      setInlineEditingItem(null);
+      setInlineEditForm({});
+      
+      // Add visual feedback for the edited item
+      addEditFeedback(inlineEditingItem);
     } catch (err) {
       alert(`Error saving item: ${err.message}`);
     }
