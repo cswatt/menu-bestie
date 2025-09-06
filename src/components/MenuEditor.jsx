@@ -455,10 +455,10 @@ const MenuEditor = () => {
           />
           
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={expandAll}>
+            <Button variant="outline" size="sm" onClick={expandAll} className="text-xs">
               Expand All
             </Button>
-            <Button variant="outline" size="sm" onClick={collapseAll}>
+            <Button variant="outline" size="sm" onClick={collapseAll} className="text-xs">
               Collapse All
             </Button>
           </div>
@@ -467,7 +467,7 @@ const MenuEditor = () => {
             Showing {getVisibleItemCount(hierarchicalItems, expandedItems, isExpanded)} of {menuData?.menu?.main?.length || 0} items
           </div>
           
-          <Button onClick={() => setShowAddModal(true)}>
+          <Button onClick={() => setShowAddModal(true)} className="text-xs">
             Add Item
           </Button>
         </div>
