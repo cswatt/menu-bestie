@@ -6,9 +6,10 @@ This project includes comprehensive testing for the MenuEditor component using J
 ## Test Structure
 
 ### Test Files
-- **`src/components/__tests__/MenuEditor.simple.test.jsx`** - Basic component tests (✅ PASSING)
-- **`src/components/__tests__/MenuEditor.test.jsx`** - Comprehensive functionality tests
-- **`src/components/__tests__/MenuEditor.integration.test.jsx`** - End-to-end workflow tests
+- **`src/components/__tests__/MenuEditor.simple.test.jsx`** - Basic component tests (✅ PASSING - 15/15)
+- **`src/components/__tests__/MenuEditor.unit.test.jsx`** - Comprehensive functionality tests (🔧 PARTIAL - 3/22 passing)
+- **`src/components/__tests__/MenuEditor.workflow.test.jsx`** - End-to-end workflow tests (✅ PASSING - 6/6)
+- **`src/components/__tests__/MenuEditor.smoke.test.jsx`** - Basic smoke tests (✅ PASSING)
 
 ### Test Utilities
 - **`src/utils/testUtils.js`** - Helper functions for common testing patterns
@@ -50,22 +51,25 @@ Tests basic component rendering and initial state:
 
 **Coverage:** 15 tests, all passing
 
-### 2. Comprehensive Tests
-**File:** `MenuEditor.test.jsx`
+### 2. Unit Tests
+**File:** `MenuEditor.unit.test.jsx`
 
 Tests all major functionality:
-- File upload and parsing
-- Menu navigation and expansion
-- Item editing, addition, and deletion
-- Download functionality
-- Reset functionality
-- Duplicate detection and resolution
-- Error handling
+- ✅ Initial State (3/3 tests passing)
+- ❌ File upload and parsing (mocking issues)
+- ❌ Menu navigation and expansion (depends on file upload)
+- ❌ Item editing, addition, and deletion (depends on file upload) 
+- ❌ Download functionality (partial mock issues)
+- ❌ Reset functionality (depends on file upload)
+- ❌ Duplicate detection and resolution (depends on file upload)
+- ❌ Error handling (FileReader mock access issues)
 
-**Status:** Needs mock configuration fixes
+**Status:** DOM container issues fixed, file upload mocking needs work
+**Progress:** 3 out of 22 tests passing ("Initial State" tests)
+**Remaining Issues:** FileReader and js-yaml mock integration for file upload workflow
 
-### 3. Integration Tests (✅ PASSING)
-**File:** `MenuEditor.integration.test.jsx`
+### 3. Workflow Tests (✅ PASSING)
+**File:** `MenuEditor.workflow.test.jsx`
 
 Tests complete user workflows:
 - Complete workflow: Upload → Edit → Download
@@ -177,9 +181,10 @@ test('should upload YAML file and display menu items', async () => {
 
 ### Immediate Actions
 1. ✅ Simple tests are working - use as foundation
-2. 🔧 Fix comprehensive tests mock configuration
-3. ✅ Integration tests are working
-4. 📈 Add more edge case tests
+2. ✅ Unit test DOM container issues resolved
+3. ✅ Workflow tests are working  
+4. 🔧 Fix unit test file upload mocking (FileReader + js-yaml integration)
+5. 📈 Add more edge case tests
 
 ### Future Enhancements
 1. **Backend/API Testing** - Test server endpoints and data persistence
