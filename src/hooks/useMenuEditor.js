@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export const useMenuEditor = () => {
   const [editingItem, setEditingItem] = useState(null);
@@ -8,6 +8,7 @@ export const useMenuEditor = () => {
   const [inlineEditForm, setInlineEditForm] = useState({});
   const [recentlyEditedItems, setRecentlyEditedItems] = useState(new Set());
   const lastEditedItemRef = useRef(null);
+
 
   const addEditFeedback = (item) => {
     if (item._uid) {

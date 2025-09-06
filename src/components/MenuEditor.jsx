@@ -94,6 +94,8 @@ const MenuEditor = () => {
     }
   }, [menuData, preserveExpandedState]);
 
+
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file || (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml'))) {
@@ -165,6 +167,10 @@ const MenuEditor = () => {
     addEditFeedback(newItem);
   };
 
+  const handleStartEditing = (item) => {
+    startEditing(item);
+  };
+
   const handleSaveEdit = async () => {
     try {
       setIsSaving(true);
@@ -196,6 +202,10 @@ const MenuEditor = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    cancelEditing();
   };
 
   const handleSaveInlineEdit = async () => {
@@ -291,23 +301,24 @@ const MenuEditor = () => {
 
   const renderMenuItem = (item) => {
     const hasChildren = item.children && item.children.length > 0;
-    const isCurrentlyEditing = editingItem && editingItem._uid === item._uid;
     const expanded = isExpanded(item);
     const isRecentlyEdited = recentlyEditedItems.has(item._uid);
+    const isEditing = editingItem && editingItem._uid === item._uid;
+    
 
     return (
       <MenuItem
         key={item._uid || item.identifier || item.name}
         item={item}
         level={0}
-        isEditing={isCurrentlyEditing}
+        editingItem={editingItem}
         editForm={editForm}
         onEditFormChange={handleEditFormChange}
-        onStartEditing={startEditing}
+        onStartEditing={handleStartEditing}
         onSaveEdit={handleSaveEdit}
-        onCancelEdit={cancelEditing}
+        onCancelEdit={handleCancelEdit}
         onDelete={handleDeleteItem}
-        isSaving={isSaving}
+        isSaving={false}
         hasChildren={hasChildren}
         expanded={expanded}
         onToggleExpanded={() => toggleExpanded(item)}
@@ -467,6 +478,7 @@ const MenuEditor = () => {
         onSelectParentSuggestion={selectParentSuggestion}
         onParentFocus={showSuggestions}
       />
+
 
       <FileUploadModal
         show={showUploadNewModal}

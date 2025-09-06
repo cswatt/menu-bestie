@@ -5,7 +5,7 @@ import MenuItemForm from './MenuItemForm';
 const MenuItem = ({ 
   item, 
   level = 0, 
-  isEditing, 
+  editingItem,
   editForm,
   onEditFormChange,
   onStartEditing,
@@ -27,7 +27,10 @@ const MenuItem = ({
   getParentOptions
 }) => {
   const indent = level * 24;
+  const isEditing = editingItem && editingItem._uid === item._uid;
   const shouldShowEditForm = isEditing && !resolvingDuplicates;
+  
+  
 
   const handleParentInputChange = (value) => {
     onEditFormChange('parent', value);
@@ -141,7 +144,7 @@ const MenuItem = ({
               key={child._uid || child.identifier || child.name}
               item={child}
               level={level + 1}
-              isEditing={isEditing}
+              editingItem={editingItem}
               editForm={editForm}
               onEditFormChange={onEditFormChange}
               onStartEditing={onStartEditing}
