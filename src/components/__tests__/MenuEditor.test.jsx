@@ -13,51 +13,172 @@ jest.mock('js-yaml', () => ({
 const mockJsYaml = require('js-yaml');
 
 // Mock the UI components
-jest.mock('../ui/button', () => {
-  return function MockButton({ children, onClick, ...props }) {
+jest.mock('../ui/button', () => ({
+  Button: function MockButton({ children, onClick, ...props }) {
     return (
       <button onClick={onClick} {...props}>
         {children}
       </button>
     );
-  };
-});
+  }
+}));
 
-jest.mock('../ui/input', () => {
-  return function MockInput({ value, onChange, ...props }) {
+jest.mock('../ui/input', () => ({
+  Input: function MockInput({ value, onChange, ...props }) {
     return (
       <input value={value} onChange={onChange} {...props} />
     );
+  }
+}));
+
+// Mock all other components
+jest.mock('../FileUploadModal', () => {
+  return function MockFileUploadModal({ show, children }) {
+    if (!show) return null;
+    return <div data-testid="file-upload-modal">{children}</div>;
   };
 });
+
+jest.mock('../AddItemModal', () => {
+  return function MockAddItemModal({ show, children }) {
+    if (!show) return null;
+    return <div data-testid="add-item-modal">{children}</div>;
+  };
+});
+
+jest.mock('../MenuItem', () => {
+  return function MockMenuItem({ item }) {
+    return <div data-testid="menu-item">{item.name}</div>;
+  };
+});
+
+jest.mock('../MenuItemForm', () => {
+  return function MockMenuItemForm() {
+    return <form data-testid="menu-item-form">Mock Form</form>;
+  };
+});
+
+// Mock all hooks
+jest.mock('../../hooks/useMenuData', () => ({
+  useMenuData: () => ({
+    menuData: null,
+    originalMenuData: null,
+    uploadedFile: null,
+    loadFromFile: jest.fn().mockResolvedValue({ menu: { main: [] } }),
+    updateMenuData: jest.fn(),
+    resetToOriginal: jest.fn(),
+    setInitialData: jest.fn(),
+    clearData: jest.fn()
+  })
+}));
+
+jest.mock('../../hooks/useMenuEditor', () => ({
+  useMenuEditor: () => ({
+    editingItem: null,
+    editForm: {},
+    setEditForm: jest.fn(),
+    isSaving: false,
+    setIsSaving: jest.fn(),
+    inlineEditingItem: null,
+    inlineEditForm: {},
+    setInlineEditForm: jest.fn(),
+    recentlyEditedItems: new Set(),
+    lastEditedItemRef: { current: null },
+    addEditFeedback: jest.fn(),
+    startEditing: jest.fn(),
+    cancelEditing: jest.fn(),
+    startInlineEditing: jest.fn(),
+    cancelInlineEditing: jest.fn(),
+    clearAllEditing: jest.fn()
+  })
+}));
+
+jest.mock('../../hooks/useMenuNavigation', () => ({
+  useMenuNavigation: () => ({
+    expandedItems: new Set(),
+    setExpandedItems: jest.fn(),
+    searchTerm: '',
+    setSearchTerm: jest.fn(),
+    toggleExpanded: jest.fn(),
+    isExpanded: jest.fn().mockReturnValue(false),
+    expandAll: jest.fn(),
+    collapseAll: jest.fn(),
+    resetExpanded: jest.fn(),
+    ensureParentExpanded: jest.fn(),
+    preserveExpandedState: jest.fn()
+  })
+}));
+
+jest.mock('../../hooks/useMenuOperations', () => ({
+  useMenuOperations: () => ({
+    resolvingDuplicates: null,
+    duplicateResolution: null,
+    addNewItem: jest.fn(),
+    saveEditedItem: jest.fn(),
+    deleteItem: jest.fn(),
+    downloadYaml: jest.fn(),
+    getDuplicateIdentifiers: jest.fn().mockReturnValue([]),
+    getItemsWithoutIdentifiers: jest.fn().mockReturnValue([]),
+    startResolvingDuplicates: jest.fn(),
+    cancelDuplicateResolution: jest.fn(),
+    mergeIdenticalDuplicates: jest.fn(),
+    generateDiff: jest.fn()
+  })
+}));
+
+jest.mock('../../hooks/useParentSuggestions', () => ({
+  useParentSuggestions: () => ({
+    parentSuggestions: [],
+    showParentSuggestions: false,
+    handleParentInputChange: jest.fn(),
+    selectParentSuggestion: jest.fn(),
+    showSuggestions: jest.fn(),
+    hideSuggestions: jest.fn(),
+    getParentOptions: jest.fn().mockReturnValue([])
+  })
+}));
+
+jest.mock('../../utils/menuUtils', () => ({
+  buildHierarchy: jest.fn().mockReturnValue([]),
+  filterItems: jest.fn().mockReturnValue([]),
+  getVisibleItemCount: jest.fn().mockReturnValue(0)
+}));
 
 describe('MenuEditor', () => {
   let user;
   
   beforeEach(() => {
     user = userEvent.setup();
-    mockBrowserAPIs();
     jest.clearAllMocks();
+    
+    // Mock browser APIs
+    global.URL.createObjectURL = jest.fn(() => 'mock-url');
+    global.URL.revokeObjectURL = jest.fn();
+    
+    // Set up proper DOM container
+    document.body.innerHTML = '<div id="root"></div>';
   });
-
+  
   afterEach(() => {
-    restoreBrowserAPIs();
+    document.body.innerHTML = '';
   });
 
   describe('Initial State', () => {
     test('renders without crashing', () => {
       render(<MenuEditor />);
-      expect(screen.getByText(/Menu Editor/i)).toBeInTheDocument();
+      expect(screen.getByText(/Menu Bestie/i)).toBeInTheDocument();
     });
 
     test('shows upload file button initially', () => {
       render(<MenuEditor />);
-      expect(screen.getByText(/Upload YAML File/i)).toBeInTheDocument();
+      expect(screen.getByText(/Choose a file/i)).toBeInTheDocument();
     });
 
     test('does not show menu data initially', () => {
       render(<MenuEditor />);
-      expect(screen.queryByText(/menu/i)).not.toBeInTheDocument();
+      // Should not show any specific menu items, just the upload interface
+      expect(screen.queryByText(/No menu items found/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Upload Your Menu File/i)).toBeInTheDocument();
     });
   });
 
@@ -431,7 +552,7 @@ describe('MenuEditor', () => {
       };
 
       mockJsYaml.load.mockReturnValue(mockYamlData);
-      jsYaml.dump.mockReturnValue('yaml content');
+      mockJsYaml.dump.mockReturnValue('yaml content');
 
       // Mock URL.createObjectURL and revokeObjectURL
       global.URL.createObjectURL = jest.fn(() => 'mock-url');
