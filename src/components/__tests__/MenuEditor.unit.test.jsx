@@ -157,17 +157,10 @@ describe('MenuEditor', () => {
   beforeEach(() => {
     user = userEvent.setup();
     jest.clearAllMocks();
-    
-    // Mock browser APIs
-    global.URL.createObjectURL = jest.fn(() => 'mock-url');
-    global.URL.revokeObjectURL = jest.fn();
-    
-    // Set up proper DOM container
-    document.body.innerHTML = '<div id="root"></div>';
   });
   
   afterEach(() => {
-    document.body.innerHTML = '';
+    jest.restoreAllMocks();
   });
 
   describe('Initial State', () => {
@@ -205,7 +198,7 @@ describe('MenuEditor', () => {
       render(<MenuEditor />);
       
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       
       await user.upload(input, file);
       
@@ -223,7 +216,7 @@ describe('MenuEditor', () => {
       render(<MenuEditor />);
       
       const file = new File(['invalid yaml'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       
       await user.upload(input, file);
       
@@ -240,7 +233,7 @@ describe('MenuEditor', () => {
       render(<MenuEditor />);
       
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       
       await user.upload(input, file);
       
@@ -277,7 +270,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -347,7 +340,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -431,7 +424,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -520,7 +513,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -561,25 +554,12 @@ describe('MenuEditor', () => {
       mockJsYaml.load.mockReturnValue(mockYamlData);
       mockJsYaml.dump.mockReturnValue('yaml content');
 
-      // Mock URL.createObjectURL and revokeObjectURL
-      global.URL.createObjectURL = jest.fn(() => 'mock-url');
-      global.URL.revokeObjectURL = jest.fn();
-
-      // Mock document.createElement and appendChild
-      const mockAnchor = {
-        href: '',
-        download: '',
-        click: jest.fn()
-      };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockAnchor);
-      jest.spyOn(document.body, 'appendChild').mockImplementation(() => {});
-      jest.spyOn(document.body, 'removeChild').mockImplementation(() => {});
 
       component = render(<MenuEditor />);
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -630,7 +610,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -696,7 +676,7 @@ describe('MenuEditor', () => {
       
       // Upload file first
       const file = new File(['yaml content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       user.upload(input, file);
     });
 
@@ -739,7 +719,7 @@ describe('MenuEditor', () => {
       render(<MenuEditor />);
       
       const file = new File(['content'], 'test.yaml', { type: 'text/yaml' });
-      const input = screen.getByLabelText(/Upload YAML File/i);
+      const input = screen.getByLabelText(/Choose a file/i);
       
       // Simulate error
       const fileReader = global.FileReader.mock.results[0].value;

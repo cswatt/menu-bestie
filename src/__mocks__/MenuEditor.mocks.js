@@ -97,7 +97,7 @@ export const createMockHooks = () => {
       saveEditedItem: jest.fn(),
       deleteItem: jest.fn(),
       downloadYaml: jest.fn(() => {
-        global.URL.createObjectURL();
+        global.URL.createObjectURL = jest.fn(() => 'mock-blob-url');
       }),
       getDuplicateIdentifiers: jest.fn().mockReturnValue([]),
       getItemsWithoutIdentifiers: jest.fn().mockReturnValue([]),
