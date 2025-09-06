@@ -58,7 +58,7 @@ npm test -- --coverage --watchAll=false                    # Run with coverage r
 **Test Structure**: 
 - Simple tests (`MenuEditor.simple.test.jsx`) - ✅ Passing
 - Comprehensive tests (`MenuEditor.test.jsx`) - Need mock fixes
-- Integration tests (`MenuEditor.integration.test.jsx`) - Need mock fixes
+- Integration tests (`MenuEditor.integration.test.jsx`) - ✅ Passing
 - Test utilities in `src/utils/testUtils.js`
 
 ## Technical Details
@@ -85,3 +85,18 @@ The MenuEditor component uses multiple useState hooks to manage:
 - **Frontend**: React, Radix UI, Tailwind CSS, js-yaml, Lucide React icons
 - **Backend**: Express, cors, js-yaml, concurrently
 - **Testing**: Jest, React Testing Library, user-event
+
+## Code Quality & Architecture Notes
+
+### Known Issues
+- **Large Component**: `MenuEditor.jsx` is 704 lines - needs refactoring into smaller components
+- **Limited Test Coverage**: Comprehensive test suite needs mock configuration fixes
+- **No Persistent Storage**: Backend uses memory-only storage (data lost on restart)
+- **Performance**: Not optimized for large menu datasets (100+ items)
+
+### Improvement Areas
+See `PLAN.md` for detailed improvement roadmap including:
+- Component refactoring and state management enhancement
+- Performance optimization with virtualization
+- Backend persistence with database integration  
+- Advanced features like drag & drop, real-time collaboration
