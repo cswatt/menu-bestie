@@ -325,7 +325,8 @@ const MenuEditor = () => {
         isSaving={false}
         hasChildren={hasChildren}
         expanded={expanded}
-        onToggleExpanded={() => toggleExpanded(item)}
+        onToggleExpanded={toggleExpanded}
+        isExpanded={isExpanded}
         isRecentlyEdited={isRecentlyEdited}
         recentlyEditedItems={recentlyEditedItems}
         resolvingDuplicates={resolvingDuplicates}

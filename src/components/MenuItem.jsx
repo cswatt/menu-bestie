@@ -16,6 +16,7 @@ const MenuItem = ({
   hasChildren,
   expanded,
   onToggleExpanded,
+  isExpanded,
   isRecentlyEdited,
   recentlyEditedItems,
   resolvingDuplicates,
@@ -92,7 +93,7 @@ const MenuItem = ({
         }`}>
           {hasChildren && (
             <button
-              onClick={onToggleExpanded}
+              onClick={() => onToggleExpanded(item)}
               className="text-gray-500 hover:text-gray-700 transition-colors p-1"
               title={expanded ? 'Collapse' : 'Expand'}
             >
@@ -155,8 +156,9 @@ const MenuItem = ({
               onDelete={onDelete}
               isSaving={isSaving}
               hasChildren={child.children && child.children.length > 0}
-              expanded={expanded}
+              expanded={isExpanded ? isExpanded(child) : expanded}
               onToggleExpanded={onToggleExpanded}
+              isExpanded={isExpanded}
               isRecentlyEdited={isRecentlyEdited}
               recentlyEditedItems={recentlyEditedItems}
               resolvingDuplicates={resolvingDuplicates}
