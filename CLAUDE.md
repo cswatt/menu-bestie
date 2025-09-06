@@ -56,9 +56,11 @@ npm test -- --coverage --watchAll=false                    # Run with coverage r
 ```
 
 **Test Structure**: 
-- Simple tests (`MenuEditor.simple.test.jsx`) - ✅ Passing
-- Comprehensive tests (`MenuEditor.test.jsx`) - Need mock fixes
-- Integration tests (`MenuEditor.integration.test.jsx`) - Need mock fixes
+- Simple tests (`MenuEditor.simple.test.jsx`) - ✅ Passing (15/15 tests)
+- Unit tests (`MenuEditor.unit.test.jsx`) - ✅ Fully fixed (14/14 tests passing)
+- Workflow tests (`MenuEditor.workflow.test.jsx`) - ✅ Passing (6/6 tests)
+- Smoke tests (`MenuEditor.smoke.test.jsx`) - ✅ Passing (2/2 tests)
+- Backend API tests (`server.test.js`) - ✅ Comprehensive (22/22 tests passing)
 - Test utilities in `src/utils/testUtils.js`
 
 ## Technical Details
@@ -84,4 +86,24 @@ The MenuEditor component uses multiple useState hooks to manage:
 ### Dependencies
 - **Frontend**: React, Radix UI, Tailwind CSS, js-yaml, Lucide React icons
 - **Backend**: Express, cors, js-yaml, concurrently
-- **Testing**: Jest, React Testing Library, user-event
+- **Testing**: Jest, React Testing Library, user-event, supertest
+
+## Code Quality & Architecture Notes
+
+### Known Issues
+- **Large Component**: `MenuEditor.jsx` is 704 lines - needs refactoring into smaller components
+- **No Persistent Storage**: Backend uses memory-only storage (data lost on restart)
+- **Performance**: Not optimized for large menu datasets (100+ items)
+
+### Recent Improvements
+- **✅ Testing Infrastructure**: Comprehensive test suite with 59/59 tests passing
+- **✅ Backend API Testing**: Complete endpoint coverage with error scenarios
+- **✅ Mock Integration**: Proper FileReader and state isolation in tests
+- **✅ Error Handling**: Tests cover malformed YAML, network failures, and edge cases
+
+### Improvement Areas
+See `PLAN.md` for detailed improvement roadmap including:
+- Component refactoring and state management enhancement
+- Performance optimization with virtualization
+- Backend persistence with database integration  
+- Advanced features like drag & drop, real-time collaboration

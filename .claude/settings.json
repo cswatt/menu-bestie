@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Read(*)",
+      "Bash(npm audit:*)",
+      "Edit(*.test.jsx)",
+      "MultiEdit(*.test.jsx)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
