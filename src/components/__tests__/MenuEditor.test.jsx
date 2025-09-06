@@ -2,14 +2,15 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MenuEditor from '../MenuEditor';
+import { mockBrowserAPIs, restoreBrowserAPIs } from '../../utils/testUtils';
 
-// Mock js-yaml
-const mockJsYaml = {
+// Mock js-yaml at the module level
+jest.mock('js-yaml', () => ({
   load: jest.fn(),
   dump: jest.fn()
-};
+}));
 
-jest.mock('js-yaml', () => mockJsYaml);
+const mockJsYaml = require('js-yaml');
 
 // Mock the UI components
 jest.mock('../ui/button', () => {
@@ -35,8 +36,12 @@ describe('MenuEditor', () => {
   
   beforeEach(() => {
     user = userEvent.setup();
-    // Clear all mocks
+    mockBrowserAPIs();
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    restoreBrowserAPIs();
   });
 
   describe('Initial State', () => {
@@ -67,8 +72,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       render(<MenuEditor />);
       
@@ -84,8 +88,7 @@ describe('MenuEditor', () => {
     });
 
     test('shows error for invalid YAML file', async () => {
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockImplementation(() => {
+      mockJsYaml.load.mockImplementation(() => {
         throw new Error('Invalid YAML');
       });
 
@@ -140,8 +143,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
@@ -211,8 +213,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
@@ -296,8 +297,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
@@ -386,8 +386,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
@@ -431,8 +430,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
       jsYaml.dump.mockReturnValue('yaml content');
 
       // Mock URL.createObjectURL and revokeObjectURL
@@ -466,7 +464,7 @@ describe('MenuEditor', () => {
       await user.click(downloadButton);
 
       await waitFor(() => {
-        expect(require('js-yaml').dump).toHaveBeenCalled();
+        expect(mockJsYaml.dump).toHaveBeenCalled();
         expect(global.URL.createObjectURL).toHaveBeenCalled();
       });
     });
@@ -498,8 +496,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
@@ -565,8 +562,7 @@ describe('MenuEditor', () => {
         }
       };
 
-      const { jsYaml } = require('js-yaml');
-      jsYaml.load.mockReturnValue(mockYamlData);
+      mockJsYaml.load.mockReturnValue(mockYamlData);
 
       component = render(<MenuEditor />);
       
