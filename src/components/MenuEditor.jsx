@@ -183,12 +183,16 @@ const MenuEditor = () => {
       
       await saveEditedItem(editingItem, editForm);
       
-      // Handle parent expansion and scrolling
-      if (editForm.parent) {
-        ensureParentExpanded(editForm.parent);
+      // Handle parent expansion and scrolling only if parent changed
+      const originalParent = editingItem.parent;
+      const newParent = editForm.parent;
+      const parentChanged = originalParent !== newParent;
+      
+      if (parentChanged && newParent) {
+        ensureParentExpanded(newParent);
         
         setTimeout(() => {
-          const parentElement = document.querySelector(`[data-item-id="${editForm.parent}"]`);
+          const parentElement = document.querySelector(`[data-item-id="${newParent}"]`);
           if (parentElement) {
             parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
