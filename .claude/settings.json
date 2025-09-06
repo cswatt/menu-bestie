@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm test:*)",
-      "Read(*)"
+      "Read(*)",
+      "Bash(npm audit:*)",
+      "Edit(*.test.jsx)",
+      "MultiEdit(*.test.jsx)"
     ],
     "deny": [],
     "ask": []
