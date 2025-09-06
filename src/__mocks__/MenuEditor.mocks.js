@@ -41,78 +41,82 @@ export const mockComponents = {
   }
 };
 
-// Mock hook implementations
-export const mockHooks = {
-  useMenuData: (mockMenuData = null) => ({
-    menuData: mockMenuData,
-    originalMenuData: null,
-    uploadedFile: null,
-    loadFromFile: jest.fn().mockResolvedValue({ menu: { main: [] } }),
-    updateMenuData: jest.fn(),
-    resetToOriginal: jest.fn(),
-    setInitialData: jest.fn((data) => { mockMenuData = data; }),
-    clearData: jest.fn()
-  }),
+// Mock hook implementations with proper state isolation
+export const createMockHooks = () => {
+  let menuData = null;
   
-  useMenuEditor: () => ({
-    editingItem: null,
-    editForm: {},
-    setEditForm: jest.fn(),
-    isSaving: false,
-    setIsSaving: jest.fn(),
-    inlineEditingItem: null,
-    inlineEditForm: {},
-    setInlineEditForm: jest.fn(),
-    recentlyEditedItems: new Set(),
-    lastEditedItemRef: { current: null },
-    addEditFeedback: jest.fn(),
-    startEditing: jest.fn(),
-    cancelEditing: jest.fn(),
-    startInlineEditing: jest.fn(),
-    cancelInlineEditing: jest.fn(),
-    clearAllEditing: jest.fn()
-  }),
-  
-  useMenuNavigation: () => ({
-    expandedItems: new Set(),
-    setExpandedItems: jest.fn(),
-    searchTerm: '',
-    setSearchTerm: jest.fn(),
-    toggleExpanded: jest.fn(),
-    isExpanded: jest.fn().mockReturnValue(false),
-    expandAll: jest.fn(),
-    collapseAll: jest.fn(),
-    resetExpanded: jest.fn(),
-    ensureParentExpanded: jest.fn(),
-    preserveExpandedState: jest.fn()
-  }),
-  
-  useMenuOperations: () => ({
-    resolvingDuplicates: null,
-    duplicateResolution: null,
-    addNewItem: jest.fn(),
-    saveEditedItem: jest.fn(),
-    deleteItem: jest.fn(),
-    downloadYaml: jest.fn(() => {
-      global.URL.createObjectURL();
+  return {
+    useMenuData: () => ({
+      menuData,
+      originalMenuData: null,
+      uploadedFile: null,
+      loadFromFile: jest.fn().mockResolvedValue({ menu: { main: [] } }),
+      updateMenuData: jest.fn((data) => { menuData = data; }),
+      resetToOriginal: jest.fn(),
+      setInitialData: jest.fn((data) => { menuData = data; }),
+      clearData: jest.fn(() => { menuData = null; })
     }),
-    getDuplicateIdentifiers: jest.fn().mockReturnValue([]),
-    getItemsWithoutIdentifiers: jest.fn().mockReturnValue([]),
-    startResolvingDuplicates: jest.fn(),
-    cancelDuplicateResolution: jest.fn(),
-    mergeIdenticalDuplicates: jest.fn(),
-    generateDiff: jest.fn()
-  }),
-  
-  useParentSuggestions: () => ({
-    parentSuggestions: [],
-    showParentSuggestions: false,
-    handleParentInputChange: jest.fn(),
-    selectParentSuggestion: jest.fn(),
-    showSuggestions: jest.fn(),
-    hideSuggestions: jest.fn(),
-    getParentOptions: jest.fn().mockReturnValue([])
-  })
+    
+    useMenuEditor: () => ({
+      editingItem: null,
+      editForm: {},
+      setEditForm: jest.fn(),
+      isSaving: false,
+      setIsSaving: jest.fn(),
+      inlineEditingItem: null,
+      inlineEditForm: {},
+      setInlineEditForm: jest.fn(),
+      recentlyEditedItems: new Set(),
+      lastEditedItemRef: { current: null },
+      addEditFeedback: jest.fn(),
+      startEditing: jest.fn(),
+      cancelEditing: jest.fn(),
+      startInlineEditing: jest.fn(),
+      cancelInlineEditing: jest.fn(),
+      clearAllEditing: jest.fn()
+    }),
+    
+    useMenuNavigation: () => ({
+      expandedItems: new Set(),
+      setExpandedItems: jest.fn(),
+      searchTerm: '',
+      setSearchTerm: jest.fn(),
+      toggleExpanded: jest.fn(),
+      isExpanded: jest.fn().mockReturnValue(false),
+      expandAll: jest.fn(),
+      collapseAll: jest.fn(),
+      resetExpanded: jest.fn(),
+      ensureParentExpanded: jest.fn(),
+      preserveExpandedState: jest.fn()
+    }),
+    
+    useMenuOperations: () => ({
+      resolvingDuplicates: null,
+      duplicateResolution: null,
+      addNewItem: jest.fn(),
+      saveEditedItem: jest.fn(),
+      deleteItem: jest.fn(),
+      downloadYaml: jest.fn(() => {
+        global.URL.createObjectURL();
+      }),
+      getDuplicateIdentifiers: jest.fn().mockReturnValue([]),
+      getItemsWithoutIdentifiers: jest.fn().mockReturnValue([]),
+      startResolvingDuplicates: jest.fn(),
+      cancelDuplicateResolution: jest.fn(),
+      mergeIdenticalDuplicates: jest.fn(),
+      generateDiff: jest.fn()
+    }),
+    
+    useParentSuggestions: () => ({
+      parentSuggestions: [],
+      showParentSuggestions: false,
+      handleParentInputChange: jest.fn(),
+      selectParentSuggestion: jest.fn(),
+      showSuggestions: jest.fn(),
+      hideSuggestions: jest.fn(),
+      getParentOptions: jest.fn().mockReturnValue([])
+    })
+  };
 };
 
 // Mock utilities
@@ -148,11 +152,21 @@ export const createTestMenuData = (items = []) => ({
   }
 });
 
-// Setup function for common test initialization
-export const setupTestEnvironment = () => {
+// Setup function for common test initialization with isolated state
+export const setupTestEnvironment = (initialMenuData = null) => {
   jest.clearAllMocks();
   mockBrowserAPIs();
   document.body.innerHTML = '<div id="root"></div>';
+  
+  // Create fresh mock hooks with isolated state for this test
+  const hooks = createMockHooks();
+  
+  // Set initial menu data if provided
+  if (initialMenuData) {
+    hooks.useMenuData().setInitialData(initialMenuData);
+  }
+  
+  return hooks;
 };
 
 // Teardown function
