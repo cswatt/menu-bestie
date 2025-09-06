@@ -11,8 +11,28 @@ export const useMenuData = () => {
     
     return items.map((item, index) => ({
       ...item,
-      _uid: item._uid || `item_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`
+      _uid: item._uid || `item_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+      children: item.children ? addUIDsToItems(item.children) : undefined
     }));
+  };
+
+  const flattenMenuItems = (items) => {
+    if (!items || !Array.isArray(items)) return [];
+    
+    const flattened = [];
+    
+    items.forEach(item => {
+      // Add the item itself
+      flattened.push(item);
+      
+      // Recursively add children
+      if (item.children && Array.isArray(item.children)) {
+        const flattenedChildren = flattenMenuItems(item.children);
+        flattened.push(...flattenedChildren);
+      }
+    });
+    
+    return flattened;
   };
 
   const loadFromFile = (file) => {
@@ -28,12 +48,30 @@ export const useMenuData = () => {
             return;
           }
           
+          // First add UIDs to all items (including nested ones)
           const itemsWithUIDs = addUIDsToItems(data.menu.main);
+          
+          // Then flatten the structure and set up parent relationships
+          const flattenedItems = flattenMenuItems(itemsWithUIDs);
+          
+          // Set up parent relationships for flattened items
+          const itemsWithParents = flattenedItems.map(item => {
+            // Find parent by checking if this item was originally a child
+            const parentItem = itemsWithUIDs.find(parent => 
+              parent.children && parent.children.some(child => child._uid === item._uid)
+            );
+            
+            return {
+              ...item,
+              parent: parentItem ? parentItem.identifier : item.parent
+            };
+          });
+          
           const dataWithUIDs = {
             ...data,
             menu: {
               ...data.menu,
-              main: itemsWithUIDs
+              main: itemsWithParents
             }
           };
           

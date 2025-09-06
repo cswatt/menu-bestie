@@ -94,6 +94,8 @@ const MenuEditor = () => {
     }
   }, [menuData, preserveExpandedState]);
 
+
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file || (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml'))) {
@@ -165,6 +167,10 @@ const MenuEditor = () => {
     addEditFeedback(newItem);
   };
 
+  const handleStartEditing = (item) => {
+    startEditing(item);
+  };
+
   const handleSaveEdit = async () => {
     try {
       setIsSaving(true);
@@ -177,12 +183,16 @@ const MenuEditor = () => {
       
       await saveEditedItem(editingItem, editForm);
       
-      // Handle parent expansion and scrolling
-      if (editForm.parent) {
-        ensureParentExpanded(editForm.parent);
+      // Handle parent expansion and scrolling only if parent changed
+      const originalParent = editingItem.parent;
+      const newParent = editForm.parent;
+      const parentChanged = originalParent !== newParent;
+      
+      if (parentChanged && newParent) {
+        ensureParentExpanded(newParent);
         
         setTimeout(() => {
-          const parentElement = document.querySelector(`[data-item-id="${editForm.parent}"]`);
+          const parentElement = document.querySelector(`[data-item-id="${newParent}"]`);
           if (parentElement) {
             parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
@@ -196,6 +206,10 @@ const MenuEditor = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    cancelEditing();
   };
 
   const handleSaveInlineEdit = async () => {
@@ -291,27 +305,30 @@ const MenuEditor = () => {
 
   const renderMenuItem = (item) => {
     const hasChildren = item.children && item.children.length > 0;
-    const isCurrentlyEditing = editingItem && editingItem._uid === item._uid;
     const expanded = isExpanded(item);
     const isRecentlyEdited = recentlyEditedItems.has(item._uid);
+    const isEditing = editingItem && editingItem._uid === item._uid;
+    
 
     return (
       <MenuItem
         key={item._uid || item.identifier || item.name}
         item={item}
         level={0}
-        isEditing={isCurrentlyEditing}
+        editingItem={editingItem}
         editForm={editForm}
         onEditFormChange={handleEditFormChange}
-        onStartEditing={startEditing}
+        onStartEditing={handleStartEditing}
         onSaveEdit={handleSaveEdit}
-        onCancelEdit={cancelEditing}
+        onCancelEdit={handleCancelEdit}
         onDelete={handleDeleteItem}
-        isSaving={isSaving}
+        isSaving={false}
         hasChildren={hasChildren}
         expanded={expanded}
-        onToggleExpanded={() => toggleExpanded(item)}
+        onToggleExpanded={toggleExpanded}
+        isExpanded={isExpanded}
         isRecentlyEdited={isRecentlyEdited}
+        recentlyEditedItems={recentlyEditedItems}
         resolvingDuplicates={resolvingDuplicates}
         menuData={menuData}
         parentSuggestions={parentSuggestions}
@@ -438,10 +455,10 @@ const MenuEditor = () => {
           />
           
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={expandAll}>
+            <Button variant="outline" size="sm" onClick={expandAll} className="text-xs">
               Expand All
             </Button>
-            <Button variant="outline" size="sm" onClick={collapseAll}>
+            <Button variant="outline" size="sm" onClick={collapseAll} className="text-xs">
               Collapse All
             </Button>
           </div>
@@ -450,7 +467,7 @@ const MenuEditor = () => {
             Showing {getVisibleItemCount(hierarchicalItems, expandedItems, isExpanded)} of {menuData?.menu?.main?.length || 0} items
           </div>
           
-          <Button onClick={() => setShowAddModal(true)}>
+          <Button onClick={() => setShowAddModal(true)} className="text-xs">
             Add Item
           </Button>
         </div>
@@ -467,6 +484,7 @@ const MenuEditor = () => {
         onSelectParentSuggestion={selectParentSuggestion}
         onParentFocus={showSuggestions}
       />
+
 
       <FileUploadModal
         show={showUploadNewModal}

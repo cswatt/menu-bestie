@@ -5,7 +5,7 @@ import MenuItemForm from './MenuItemForm';
 const MenuItem = ({ 
   item, 
   level = 0, 
-  isEditing, 
+  editingItem,
   editForm,
   onEditFormChange,
   onStartEditing,
@@ -16,7 +16,9 @@ const MenuItem = ({
   hasChildren,
   expanded,
   onToggleExpanded,
+  isExpanded,
   isRecentlyEdited,
+  recentlyEditedItems,
   resolvingDuplicates,
   menuData,
   parentSuggestions,
@@ -27,7 +29,11 @@ const MenuItem = ({
   getParentOptions
 }) => {
   const indent = level * 24;
+  const isEditing = editingItem && editingItem._uid === item._uid;
   const shouldShowEditForm = isEditing && !resolvingDuplicates;
+  const isRecentlyEditedItem = recentlyEditedItems && recentlyEditedItems.has(item._uid);
+  
+  
 
   const handleParentInputChange = (value) => {
     onEditFormChange('parent', value);
@@ -81,13 +87,13 @@ const MenuItem = ({
         />
       ) : (
         <div className={`flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md transition-all duration-300 border-l-2 ${
-          isRecentlyEdited 
+          isRecentlyEditedItem 
             ? 'bg-purple-100 border-purple-400 shadow-sm' 
             : 'border-gray-200'
         }`}>
           {hasChildren && (
             <button
-              onClick={onToggleExpanded}
+              onClick={() => onToggleExpanded(item)}
               className="text-gray-500 hover:text-gray-700 transition-colors p-1"
               title={expanded ? 'Collapse' : 'Expand'}
             >
@@ -141,7 +147,7 @@ const MenuItem = ({
               key={child._uid || child.identifier || child.name}
               item={child}
               level={level + 1}
-              isEditing={isEditing}
+              editingItem={editingItem}
               editForm={editForm}
               onEditFormChange={onEditFormChange}
               onStartEditing={onStartEditing}
@@ -150,9 +156,11 @@ const MenuItem = ({
               onDelete={onDelete}
               isSaving={isSaving}
               hasChildren={child.children && child.children.length > 0}
-              expanded={expanded}
+              expanded={isExpanded ? isExpanded(child) : expanded}
               onToggleExpanded={onToggleExpanded}
+              isExpanded={isExpanded}
               isRecentlyEdited={isRecentlyEdited}
+              recentlyEditedItems={recentlyEditedItems}
               resolvingDuplicates={resolvingDuplicates}
               menuData={menuData}
               parentSuggestions={parentSuggestions}

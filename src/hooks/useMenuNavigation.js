@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { buildHierarchy } from '../utils/menuUtils';
 
 export const useMenuNavigation = (menuData) => {
   const [expandedItems, setExpandedItems] = useState(new Set());
@@ -44,15 +45,18 @@ export const useMenuNavigation = (menuData) => {
       });
     };
     
-    addItemKeys(menuData.menu.main);
+    // Use the hierarchical data structure
+    const hierarchicalItems = buildHierarchy(menuData.menu.main);
+    addItemKeys(hierarchicalItems);
     setExpandedItems(allItemKeys);
   };
 
   const collapseAll = () => {
     if (!menuData) return;
     
-    const topLevelItems = menuData.menu.main.filter(item => !item.parent);
-    const topLevelKeys = new Set(topLevelItems.map(item => item.identifier || item.name));
+    // Use the hierarchical data structure to get top-level items
+    const hierarchicalItems = buildHierarchy(menuData.menu.main);
+    const topLevelKeys = new Set(hierarchicalItems.map(item => item.identifier || item.name));
     setExpandedItems(topLevelKeys);
   };
 
