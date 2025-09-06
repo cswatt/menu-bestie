@@ -38,31 +38,30 @@ export const renderWithUser = (component) => {
   };
 };
 
-// Helper to mock js-yaml
+// Helper to mock js-yaml - returns the mock functions to use
 export const mockJsYaml = (loadData = null, dumpData = 'yaml content') => {
-  const jsYaml = require('js-yaml');
+  const mockLoad = jest.fn();
+  const mockDump = jest.fn();
   
-  if (loadData) {
-    jsYaml.load.mockReturnValue(loadData);
+  if (loadData !== null) {
+    mockLoad.mockReturnValue(loadData);
   }
   
-  if (dumpData) {
-    jsYaml.dump.mockReturnValue(dumpData);
+  if (dumpData !== null) {
+    mockDump.mockReturnValue(dumpData);
   }
   
-  return jsYaml;
+  return {
+    load: mockLoad,
+    dump: mockDump
+  };
 };
 
-// Helper to setup js-yaml mocks
-export const setupJsYamlMocks = () => {
-  const jsYaml = require('js-yaml');
-  jsYaml.load.mockClear();
-  jsYaml.dump.mockClear();
-  return jsYaml;
-};
-
-// Helper to get js-yaml module
-export const getJsYaml = () => require('js-yaml');
+// Helper to create a global js-yaml mock for use in jest.mock()
+export const createGlobalJsYamlMock = () => ({
+  load: jest.fn(),
+  dump: jest.fn()
+});
 
 // Helper to simulate file upload
 export const simulateFileUpload = async (user, inputElement, file) => {
@@ -93,8 +92,23 @@ export const mockBrowserAPIs = () => {
   global.URL.createObjectURL = jest.fn(() => 'mock-url');
   global.URL.revokeObjectURL = jest.fn();
   
+  // Mock FileReader
+  global.FileReader = jest.fn(() => ({
+    readAsText: jest.fn(function() {
+      // Simulate successful file read
+      setTimeout(() => {
+        if (this.onload) {
+          this.onload({ target: { result: 'mock yaml content' } });
+        }
+      }, 0);
+    }),
+    onload: null,
+    onerror: null,
+    result: null
+  }));
+  
   // Mock document.createElement for anchor tags
-  const originalCreateElement = document.createElement;
+  const originalCreateElement = document.createElement.bind(document);
   document.createElement = jest.fn((tagName) => {
     if (tagName === 'a') {
       return {
@@ -103,7 +117,7 @@ export const mockBrowserAPIs = () => {
         click: jest.fn()
       };
     }
-    return originalCreateElement.call(document, tagName);
+    return originalCreateElement(tagName);
   });
   
   // Mock document.body methods

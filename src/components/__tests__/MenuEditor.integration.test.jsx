@@ -6,18 +6,44 @@ import {
   createMockYamlFile, 
   createMockMenuData, 
   createMockMenuItem,
-  mockJsYaml,
   mockBrowserAPIs,
   restoreBrowserAPIs
 } from '../../utils/testUtils';
+
+// Mock js-yaml at the module level
+jest.mock('js-yaml', () => ({
+  load: jest.fn(),
+  dump: jest.fn()
+}));
+
+const mockJsYaml = require('js-yaml');
+
+// Mock the UI components to avoid complexity
+jest.mock('../ui/button', () => {
+  return function MockButton({ children, onClick, ...props }) {
+    return (
+      <button onClick={onClick} {...props}>
+        {children}
+      </button>
+    );
+  };
+});
+
+jest.mock('../ui/input', () => {
+  return function MockInput({ value, onChange, ...props }) {
+    return (
+      <input value={value} onChange={onChange} {...props} />
+    );
+  };
+});
 
 describe('MenuEditor Integration Tests', () => {
   let user;
   
   beforeEach(() => {
     user = userEvent.setup();
-    mockBrowserAPIs();
     jest.clearAllMocks();
+    mockBrowserAPIs();
   });
 
   afterEach(() => {
@@ -32,7 +58,9 @@ describe('MenuEditor Integration Tests', () => {
         createMockMenuItem({ name: 'About', identifier: 'about', url: '/about' })
       ]);
       
-      mockJsYaml(mockData, 'modified yaml content');
+      // Setup js-yaml mocks
+      mockJsYaml.load.mockReturnValue(mockData);
+      mockJsYaml.dump.mockReturnValue('modified yaml content');
 
       render(<MenuEditor />);
       
@@ -130,7 +158,8 @@ describe('MenuEditor Integration Tests', () => {
         createMockMenuItem({ name: 'Public', identifier: 'public', url: '/public' })
       ]);
       
-      mockJsYaml(mockData);
+      // Setup js-yaml mocks
+      mockJsYaml.load.mockReturnValue(mockData);
 
       render(<MenuEditor />);
       
@@ -191,7 +220,8 @@ describe('MenuEditor Integration Tests', () => {
         createMockMenuItem({ name: 'FAQ', identifier: 'faq', url: '/faq' })
       ]);
       
-      mockJsYaml(mockData);
+      // Setup js-yaml mocks
+      mockJsYaml.load.mockReturnValue(mockData);
 
       render(<MenuEditor />);
       
@@ -255,7 +285,8 @@ describe('MenuEditor Integration Tests', () => {
         createMockMenuItem({ name: 'About Us', identifier: 'about', url: '/about-us' }) // Duplicate
       ]);
       
-      mockJsYaml(mockData);
+      // Setup js-yaml mocks
+      mockJsYaml.load.mockReturnValue(mockData);
 
       render(<MenuEditor />);
       
