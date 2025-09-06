@@ -1,3 +1,10 @@
+/**
+ * MenuEditor Unit Tests
+ * 
+ * Comprehensive unit testing for the MenuEditor component, covering all individual
+ * features and edge cases with extensive mocking of dependencies.
+ */
+
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

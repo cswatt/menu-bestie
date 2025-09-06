@@ -1,3 +1,11 @@
+/**
+ * MenuEditor Smoke Tests
+ * 
+ * Basic smoke tests to verify core functionality works without errors.
+ * These tests provide quick feedback and ensure the component renders
+ * and handles basic interactions correctly.
+ */
+
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

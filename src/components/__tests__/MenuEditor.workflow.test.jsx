@@ -1,3 +1,10 @@
+/**
+ * MenuEditor Workflow Tests
+ * 
+ * End-to-end integration tests covering complete user workflows and complex
+ * interactions between multiple components and features.
+ */
+
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
