@@ -56,9 +56,10 @@ npm test -- --coverage --watchAll=false                    # Run with coverage r
 ```
 
 **Test Structure**: 
-- Simple tests (`MenuEditor.simple.test.jsx`) - ✅ Passing
-- Comprehensive tests (`MenuEditor.test.jsx`) - Need mock fixes
-- Integration tests (`MenuEditor.integration.test.jsx`) - ✅ Passing
+- Simple tests (`MenuEditor.simple.test.jsx`) - ✅ Passing (15/15 tests)
+- Unit tests (`MenuEditor.unit.test.jsx`) - 🔧 Partially fixed (3/22 tests passing, DOM issues resolved)
+- Workflow tests (`MenuEditor.workflow.test.jsx`) - ✅ Passing (6/6 tests)
+- Smoke tests (`MenuEditor.smoke.test.jsx`) - ✅ Passing
 - Test utilities in `src/utils/testUtils.js`
 
 ## Technical Details
