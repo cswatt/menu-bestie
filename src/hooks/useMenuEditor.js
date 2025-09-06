@@ -35,7 +35,6 @@ export const useMenuEditor = () => {
       weight: item.weight || 0
     });
     lastEditedItemRef.current = item;
-    addEditFeedback(item);
   };
 
   const cancelEditing = () => {

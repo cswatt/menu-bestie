@@ -17,6 +17,7 @@ const MenuItem = ({
   expanded,
   onToggleExpanded,
   isRecentlyEdited,
+  recentlyEditedItems,
   resolvingDuplicates,
   menuData,
   parentSuggestions,
@@ -29,6 +30,7 @@ const MenuItem = ({
   const indent = level * 24;
   const isEditing = editingItem && editingItem._uid === item._uid;
   const shouldShowEditForm = isEditing && !resolvingDuplicates;
+  const isRecentlyEditedItem = recentlyEditedItems && recentlyEditedItems.has(item._uid);
   
   
 
@@ -84,7 +86,7 @@ const MenuItem = ({
         />
       ) : (
         <div className={`flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md transition-all duration-300 border-l-2 ${
-          isRecentlyEdited 
+          isRecentlyEditedItem 
             ? 'bg-purple-100 border-purple-400 shadow-sm' 
             : 'border-gray-200'
         }`}>
@@ -156,6 +158,7 @@ const MenuItem = ({
               expanded={expanded}
               onToggleExpanded={onToggleExpanded}
               isRecentlyEdited={isRecentlyEdited}
+              recentlyEditedItems={recentlyEditedItems}
               resolvingDuplicates={resolvingDuplicates}
               menuData={menuData}
               parentSuggestions={parentSuggestions}

@@ -323,6 +323,7 @@ const MenuEditor = () => {
         expanded={expanded}
         onToggleExpanded={() => toggleExpanded(item)}
         isRecentlyEdited={isRecentlyEdited}
+        recentlyEditedItems={recentlyEditedItems}
         resolvingDuplicates={resolvingDuplicates}
         menuData={menuData}
         parentSuggestions={parentSuggestions}
