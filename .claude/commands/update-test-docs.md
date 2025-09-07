@@ -1,0 +1,1 @@
+Run all tests. Then update which tests are succeeding or failing in TESTING.md, PLAN.md, and CLAUDE.md.
