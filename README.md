@@ -1,8 +1,8 @@
 # Menu Bestie
 
-[menu-bestie.netlify.app](https://menu-bestie.netlify.app/)
+The new-and-improved version of [menu-friend](https://github.com/cswatt/menu-friend). Don't use Menu Friend unless your primary objective is nostalgia.
 
-A web interface for editing the left-nav menu of [Datadog's public documentation site](https://docs.datadoghq.com/), so you don't have to wade through [1000+ lines of YAML config file](https://github.com/DataDog/documentation/blob/master/config/_default/menus/main.en.yaml) every time you want to move a menu item.
+Menu Bestie web interface for editing the left-nav menu of [Datadog's public documentation site](https://docs.datadoghq.com/), so you don't have to wade through [1000+ lines of YAML config file](https://github.com/DataDog/documentation/blob/master/config/_default/menus/main.en.yaml) every time you want to move a menu item.
 
 ## Usage
 
@@ -11,18 +11,23 @@ A web interface for editing the left-nav menu of [Datadog's public documentation
 2. Make your modifications using the UI.
    - Resolve missing and duplicate `identifier` errors
    - Add, edit, and delete items
+   - At any time, if you want to reset your changes and revert to the status of your original uploaded menu, click **Reset changes**.
 
 3. Click **Download new main.en.yaml** to download your updated version.
 
 **Note**: Refreshing the page wipes out your changes.
 
-
 ### Features
 
 - Validates your config YAML, surfaces missing and duplicate `identifier` values, and provides a friendly interface to resolve these issues
-- When two items have the same `parent` and `weight`, the weight is highlighted in red. This isn't a breaking error, it's just unintended ambiguity.
+   - If you see that duplicate values can be _merged_, this means that there are two completely identical entries in the nav (likely a copy-and-paste error). Clicking **merge** safely deletes on of these entries, though of course you'll still be prompted to confirm.
+- When two items have the same `parent` and `weight`, the weight is highlighted in red. This isn't a breaking error, it's just unintended ambiguity—but you should still fix these when you find them.
+   - When re-ordering menu items, you can use the red highlights to keep track of renumberings.
 
-## Working on menu-bestie
+<details>
+<summary>Developer zone: Working on Menu Bestie</summary>
+
+## Working on Menu Bestie
 
 ### Prerequisites
 
@@ -99,7 +104,12 @@ npm test -- --coverage --watchAll=false
 - **Backend**: Express, cors, js-yaml, concurrently
 - **Testing**: Jest, React Testing Library, user-event, supertest
 
-### Claude Code workflow
+</details>
+
+<details>
+<summary>Claude Code workflow</summary>
+
+This is a Claude Code project. As such, here's how I've set it up:
 
 #### Context management
 
@@ -109,3 +119,11 @@ The following files provide Claude Code with context:
 - **`PLAN.md`** - Detailed improvement roadmap and future enhancements
 - **`TESTING.md`** - Testing strategy and test suite documentation
 - **`README.md`** - This file, providing quick start and overview
+
+#### Subagents
+- **`test-gap-analyzer`** - Analyzes the codebase and looks for missing test cases. Adds these missing test cases to `PLAN.md`.
+
+### Commands
+- `/tests`: Runs all tests and makes suggestions on how to fix the failing ones.
+- `/update-test-docs`: Updates which tests are passing/failing in `TESTING.md`, `PLAN.md`, and `CLAUDE.md`.
+</details>
