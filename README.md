@@ -24,8 +24,9 @@ Menu Bestie web interface for editing the left-nav menu of [Datadog's public doc
 - When two items have the same `parent` and `weight`, the weight is highlighted in red. This isn't a breaking error, it's just unintended ambiguity—but you should still fix these when you find them.
    - When re-ordering menu items, you can use the red highlights to keep track of renumberings.
 
+## Development
 <details>
-<summary>Developer zone: Working on Menu Bestie</summary>
+<summary>Working on Menu Bestie</summary>
 
 ## Working on Menu Bestie
 
