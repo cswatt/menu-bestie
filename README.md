@@ -28,8 +28,6 @@ Menu Bestie web interface for editing the left-nav menu of [Datadog's public doc
 <details>
 <summary>Working on Menu Bestie</summary>
 
-## Working on Menu Bestie
-
 ### Prerequisites
 
 - Node.js (v16 or higher)
@@ -124,7 +122,7 @@ The following files provide Claude Code with context:
 #### Subagents
 - **`test-gap-analyzer`** - Analyzes the codebase and looks for missing test cases. Adds these missing test cases to `PLAN.md`.
 
-### Commands
+#### Commands
 - `/tests`: Runs all tests and makes suggestions on how to fix the failing ones.
 - `/update-test-docs`: Updates which tests are passing/failing in `TESTING.md`, `PLAN.md`, and `CLAUDE.md`.
 </details>
