@@ -41,14 +41,89 @@ Menu Bestie is a well-structured React application for editing YAML menu configu
 - **State persistence** in localStorage for draft work
 
 #### 1.3 Testing Improvements
-**Priority: ✅ COMPLETED**
+**Priority: ✅ MOSTLY COMPLETED**
 - **✅ Fixed comprehensive test suite** - All 59/59 tests passing
 - **✅ Backend API tests** - Complete endpoint coverage with error scenarios
 - **✅ FileReader mock integration** - Proper state isolation and realistic testing
 - **✅ Error scenario coverage** - Malformed YAML, network failures, edge cases
-- **Future:** Add hook unit tests using `@testing-library/react-hooks`
-- **Future:** Test utility functions (`menuUtils.js`)
-- **Future:** Add E2E tests with Playwright or Cypress
+
+**Missing Test Cases - High Priority:**
+
+##### Individual Hook Unit Tests
+- **`useMenuData.js`** - Missing dedicated unit tests:
+  - `addUIDsToItems()` function with nested children and edge cases
+  - `flattenMenuItems()` with complex hierarchies and circular references
+  - `loadFromFile()` with various YAML structures and malformed files
+  - Parent relationship mapping logic in complex hierarchies
+  - Error handling for invalid file structures
+
+- **`useMenuEditor.js`** - Missing dedicated unit tests:
+  - Edit feedback timeout mechanism (3-second cleanup)
+  - State clearing functions (`clearAllEditing`)
+  - Multiple editing states (inline vs modal editing conflicts)
+  - Reference handling (`lastEditedItemRef`)
+
+- **`useMenuNavigation.js`** - Missing dedicated unit tests:
+  - `buildHierarchy()` integration and expanded state initialization
+  - `expandAll()` and `collapseAll()` with deep hierarchies
+  - `preserveExpandedState()` complex parent chain logic
+  - `ensureParentExpanded()` cascading expansion
+  - Search term persistence across state changes
+
+- **`useMenuOperations.js`** - Missing dedicated unit tests:
+  - Duplicate resolution state management and cleanup
+  - `getDuplicateIdentifiers()` with complex duplicate scenarios
+  - `generateDiff()` function for all field types
+  - `mergeIdenticalDuplicates()` edge cases and error conditions
+  - YAML download with UID stripping and special characters
+
+- **`useParentSuggestions.js`** - Missing dedicated unit tests:
+  - Click-outside event listener cleanup
+  - `generateParentSuggestions()` with descendant detection
+  - Circular reference prevention in parent suggestions
+  - Suggestion filtering and limiting logic
+  - DOM event handling edge cases
+
+##### Utility Function Tests
+- **`menuUtils.js`** - Missing comprehensive unit tests:
+  - `buildHierarchy()` with duplicate UIDs, malformed data, and circular references
+  - `filterItems()` with nested matching and complex search terms
+  - `countItemsInHierarchy()` and `getVisibleItemCount()` edge cases
+  - Performance with large datasets (100+ items)
+
+##### Component Integration Tests
+- **Individual Component Tests** - Currently only MenuEditor is tested:
+  - `AddItemModal.jsx` - Form validation, submission, parent suggestions integration
+  - `FileUploadModal.jsx` - File selection, drag-and-drop, error states
+  - `MenuItemForm.jsx` - All field validations, parent suggestions, submission flows
+  - `MenuItem.jsx` - Editing states, expand/collapse, duplicate highlighting
+  - `ParentSuggestions.jsx` - Selection, keyboard navigation, click handling
+
+##### Advanced Workflow Tests
+- **Error Recovery Scenarios**:
+  - Network failures during save operations with retry logic
+  - Browser crash/refresh recovery with localStorage persistence
+  - Concurrent editing conflicts and resolution
+  - Memory pressure with large menu datasets
+  
+- **Performance Tests**:
+  - Large menu handling (500+ items)
+  - Rapid user interactions (stress testing)
+  - Memory leak detection in long-running sessions
+  
+- **Accessibility Tests**:
+  - Keyboard navigation through entire interface
+  - Screen reader compatibility
+  - Focus management in modals and forms
+
+##### Integration Tests
+- **API Integration Tests** - Extend existing coverage:
+  - WebSocket real-time updates (future feature)
+  - File system integration tests
+  - Database integration tests (when implemented)
+  - External system webhooks
+
+**Future:** Add E2E tests with Playwright covering complete user workflows
 
 ### Phase 2: User Experience & Features (2-4 weeks)
 
